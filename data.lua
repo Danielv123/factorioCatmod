@@ -1,4 +1,5 @@
 require("util")
+require("cat-sounds")
 
 
 smallbiterscale = 0.5
@@ -184,15 +185,32 @@ function biterdieanimation(scale, tint1, tint2)
 	}
 end
 
+
+local ST_Replace_Biter = settings.startup["catmod_replace_bitter"].value
+
+local small_cat    = "small-cat"
+local medium_cat   = "medium-cat"
+local big_cat      = "big-cat"
+local behemoth_cat = "behemoth-cat"
+local cat_icon     = "__catmod__/graphics/cat_icon.png"
+
+if ST_Replace_Biter then
+ small_cat    = "small-biter"
+ medium_cat   = "medium-biter"
+ big_cat      = "big-biter"
+ behemoth_cat = "behemoth-biter"
+end
+   
+
 --[[smallcat = data.raw["unit"]["small-biter"]
 smallcat.run_animation = biterrunanimation(smallbiterscale, small_biter_tint1, small_biter_tint2)
 smallcat.max_pursue_distance = 500 ]]--
 data:extend({
 	{
 		type = "unit",
-		name = "small-biter",
-		icon = "__base__/graphics/icons/small-biter.png",
-		icon_size = 32,
+		name = small_cat,
+		icon = cat_icon,
+		icon_size = 128,
 		flags = {"placeable-player", "placeable-enemy", "placeable-off-grid", "not-repairable", "breaths-air"},
 		max_health = 15,
 		order = "b-b-a",
@@ -207,7 +225,7 @@ data:extend({
 			cooldown = 35,
 			ammo_category = "melee",
 			ammo_type = make_unit_melee_ammo_type(7),
-			sound = make_biter_roars(0.4),
+			sound = make_cat_roars(0.4),
 			animation = biterattackanimation(smallbiterscale, small_biter_tint1, small_biter_tint2)
 		},
 		vision_distance = 30,
@@ -217,17 +235,17 @@ data:extend({
 		distraction_cooldown = 300,
 		min_pursue_time = 10 * 60,
 		max_pursue_distance = 500,
-		corpse = "small-biter-corpse",
+		--corpse = "small-biter-corpse",
 		dying_explosion = "blood-explosion-small",
-		dying_sound =	make_biter_dying_sounds(0.4),
-		working_sound =	make_biter_calls(0.3),
+		dying_sound =	make_cat_dying_sounds(0.4),
+		working_sound =	make_cat_calls(0.3),
 		run_animation = biterrunanimation(smallbiterscale, small_biter_tint1, small_biter_tint2)
 	},
 	{
 		type = "unit",
-		name = "medium-biter",
-		icon = "__base__/graphics/icons/medium-biter.png",
-		icon_size = 32,
+		name = medium_cat,
+		icon = cat_icon,
+		icon_size = 128,
 		flags = {"placeable-player", "placeable-enemy", "placeable-off-grid", "breaths-air", "not-repairable"},
 		max_health = 75,
 		order="b-b-b",
@@ -258,7 +276,7 @@ data:extend({
 			ammo_type = make_unit_melee_ammo_type(15),
 			range = 1,
 			cooldown = 35,
-			sound = make_biter_roars(0.5),
+			sound = make_cat_roars(0.5),
 			animation = biterattackanimation(mediumbiterscale, medium_biter_tint1, medium_biter_tint2)
 		},
 		vision_distance = 30,
@@ -266,19 +284,19 @@ data:extend({
 		distance_per_frame = 0.15,
 		-- in pu
 		pollution_to_join_attack = 1000,
-		corpse = "medium-biter-corpse",
+		--corpse = "medium-biter-corpse",
 		dying_explosion = "blood-explosion-small",
-		working_sound = make_biter_calls(0.4),
-		dying_sound = make_biter_dying_sounds(0.5),
+		working_sound = make_cat_calls(0.4),
+		dying_sound = make_cat_dying_sounds(0.5),
 		run_animation = biterrunanimation(mediumbiterscale, medium_biter_tint1, medium_biter_tint2)
 	},
 
 	{
 		type = "unit",
-		name = "big-biter",
+		name =  big_cat,
 		order="b-b-c",
-		icon = "__base__/graphics/icons/big-biter.png",
-		icon_size = 32,
+		icon = cat_icon,
+		icon_size = 128,
 		flags = {"placeable-player", "placeable-enemy", "placeable-off-grid", "breaths-air", "not-repairable"},
 		max_health = 375,
 		subgroup="enemies",
@@ -309,7 +327,7 @@ data:extend({
 			cooldown = 35,
 			ammo_category = "melee",
 			ammo_type = make_unit_melee_ammo_type(30),
-			sound =	make_biter_roars(0.6),
+			sound =	make_cat_roars(0.6),
 			animation = biterattackanimation(bigbiterscale, big_biter_tint1, big_biter_tint2)
 		},
 		vision_distance = 30,
@@ -317,19 +335,19 @@ data:extend({
 		distance_per_frame = 0.2,
 		-- in pu
 		pollution_to_join_attack = 4000,
-		corpse = "big-biter-corpse",
+		--corpse = "big-biter-corpse",
 		dying_explosion = "blood-explosion-big",
-		working_sound = make_biter_calls(0.5),
-		dying_sound = make_biter_dying_sounds(0.6),
+		working_sound = make_cat_calls(0.5),
+		dying_sound = make_cat_dying_sounds(0.6),
 		run_animation = biterrunanimation(bigbiterscale, big_biter_tint1, big_biter_tint2)
 	},
 
 	{
 		type = "unit",
-		name = "behemoth-biter",
+		name = behemoth_cat,
 		order="b-b-d",
-		icon = "__base__/graphics/icons/behemoth-biter.png",
-		icon_size = 32,
+		icon = cat_icon,
+		icon_size = 128,
 		flags = {"placeable-player", "placeable-enemy", "placeable-off-grid", "breaths-air", "not-repairable"},
 		max_health = 3000,
 		subgroup="enemies",
@@ -361,7 +379,7 @@ data:extend({
 			cooldown = 50,
 			ammo_category = "melee",
 			ammo_type = make_unit_melee_ammo_type(90),
-			sound =	make_biter_roars(0.8),
+			sound =	make_cat_roars(0.8),
 			animation = biterattackanimation(behemothbiterscale, behemoth_biter_tint1, behemoth_biter_tint2)
 		},
 		vision_distance = 30,
@@ -369,12 +387,14 @@ data:extend({
 		distance_per_frame = 0.2,
 		-- in pu
 		pollution_to_join_attack = 20000,
-		corpse = "behemoth-biter-corpse",
+		--corpse = "behemoth-biter-corpse",
 		dying_explosion = "blood-explosion-big",
-		working_sound = make_biter_calls(0.7),
-		dying_sound = make_biter_dying_sounds(0.8),
+		working_sound = make_cat_calls(0.7),
+		dying_sound = make_cat_dying_sounds(0.8),
 		run_animation = biterrunanimation(behemothbiterscale, behemoth_biter_tint1, behemoth_biter_tint2)
 	},
+
+--[[	
 	{
 		type = "corpse",
 		name = "small-biter-corpse",
@@ -437,6 +457,8 @@ data:extend({
 		final_render_layer = "corpse",
 		animation = biterdieanimation(behemothbiterscale, behemoth_biter_tint1, behemoth_biter_tint2)
 	},
+	
+	]]
 })
 
 
