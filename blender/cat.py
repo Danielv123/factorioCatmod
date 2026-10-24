@@ -1,9 +1,9 @@
 # A cat built in code: a metaball body with mesh ears for soft cartoon proportions, glossy eyes, a nose, and procedural
 # fur from geometry nodes. The cat stands at the origin facing +Y (north), at the size of a scale 1 sprite.
 #
-# The fur is a separate Curves object whose geometry nodes read the posed body (Cycles here doesn't render curves made by
-# a mesh object's nodes). Its roots are placed on the rest pose ("rest_position") and moved to the posed body by
-# sampling it, so a strand stays on the same spot of skin from frame to frame instead of being redistributed.
+# The fur is a separate Curves object (Cycles here doesn't render curves made by a mesh object's nodes), grown once on
+# the rest pose and bent with the posed body by Deform Curves on Surface, so a strand stays on the same spot of skin
+# from frame to frame.
 import math
 
 import bmesh
@@ -18,21 +18,39 @@ EYES = [Vector((side * 0.185, 0.955, 1.02)) for side in (-1, 1)]
 EYE_RADIUS = 0.125
 MUZZLE = HEAD + Vector((0, 0.33, -0.14))
 NOSE = Vector((0, 1.075, 0.925))
-TAIL = [Vector(p) for p in ((0, -0.56, 0.66), (0, -0.78, 0.76), (0, -0.9, 0.98), (0, -0.9, 1.22), (0, -0.8, 1.4),
-	(0, -0.66, 1.44))]
-TAIL_RADII = [0.1, 0.095, 0.09, 0.085, 0.08, 0.06]
-# each ear: its base on the head, tilted outward and a little back
-EARS = [Matrix.Translation(HEAD + Vector((side * 0.25, -0.06, 0.31))) @ Matrix.Rotation(math.radians(-side * 24), 4, "Y")
-	@ Matrix.Rotation(math.radians(-10), 4, "X") @ Matrix.Rotation(math.radians(side * 14), 4, "Z") for side in (-1, 1)]
 
-COATS = {
-	"orange-tabby": {"fur": (0.8, 0.17, 0.012), "stripe": (0.4, 0.055, 0.008), "stripes": 1.0, "white": 1.0,
-		"skin": (0.8, 0.4, 0.12), "iris": ((0.45, 0.75, 0.15), (0.95, 0.75, 0.2))},
-	"grey-tabby": {"fur": (0.42, 0.42, 0.44), "stripe": (0.1, 0.1, 0.11), "stripes": 1.0, "white": 1.0,
-		"skin": (0.3, 0.3, 0.3), "iris": ((0.2, 0.6, 0.3), (0.8, 0.85, 0.3))},
-	"tuxedo": {"fur": (0.04, 0.04, 0.045), "stripe": (0.04, 0.04, 0.045), "stripes": 0.0, "white": 1.0,
-		"skin": (0.05, 0.05, 0.05), "iris": ((0.85, 0.65, 0.1), (0.95, 0.85, 0.3))},
+
+def _catmull_rom(points, per_segment):
+	"""A smooth curve through the points, per_segment samples between each pair."""
+	padded = [points[0] * 2 - points[1], *points, points[-1] * 2 - points[-2]]
+	out = []
+	for i in range(1, len(padded) - 2):
+		p0, p1, p2, p3 = padded[i - 1:i + 3]
+		for j in range(per_segment):
+			t = j / per_segment
+			out.append(0.5 * (2 * p1 + (p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t
+				+ (3 * p1 - p0 - 3 * p2 + p3) * t * t * t))
+	out.append(points[-1])
+	return out
+
+
+# a slim tail raised in a happy curl, tapering towards the tip
+TAIL = _catmull_rom([Vector(p) for p in ((0, -0.55, 0.64), (0, -0.78, 0.74), (0, -0.88, 0.98), (0, -0.88, 1.22),
+	(0, -0.78, 1.4), (0, -0.64, 1.44))], 3)
+TAIL_RADII = [0.068 - 0.03 * i / (len(TAIL) - 1) for i in range(len(TAIL))]
+# each ear: its base on the head, tilted outward and a little back
+EARS = [Matrix.Translation(HEAD + Vector((side * 0.25, -0.06, 0.31)))
+	@ Matrix.Rotation(math.radians(-side * 24), 4, "Y") @ Matrix.Rotation(math.radians(-10), 4, "X") @ Matrix.Rotation(math.radians(side * 14), 4, "Z") for side in (-1, 1)]
+
+# The fur renders white; Factorio tints it with mask layers. A pattern set is a white-patch level and a kind of
+# markings, each giving a coat mask (everything not white) and a markings mask (stripes or patches on the coat).
+PATTERNS = {
+	"tabby": {"marks": "stripes", "white": "low"},
+	"tabby-white": {"marks": "stripes", "white": "high"},
+	"patches": {"marks": "patches", "white": "low"},
+	"patches-white": {"marks": "patches", "white": "high"},
 }
+IRIS = ((0.45, 0.75, 0.15), (0.95, 0.75, 0.2))
 
 
 def _metaball_mesh():
@@ -82,7 +100,6 @@ def _metaball_mesh():
 	# a tail raised in a happy curl
 	for i in range(len(TAIL) - 1):
 		capsule(TAIL[i], TAIL[i + 1], TAIL_RADII[i])
-	ball(TAIL[-1], 0.065)
 	# sockets for the eyes
 	for eye in EYES:
 		ball(eye + Vector((0, 0.035, 0)), EYE_RADIUS * 0.9, negative=True)
@@ -193,8 +210,8 @@ def _fur_fields(body):
 				fur *= 1 - inner
 		# the tail: long, combed towards the tip
 		segment = min(range(len(TAIL) - 1), key=lambda i: (p - (TAIL[i] + TAIL[i + 1]) / 2).length)
-		if (p - (TAIL[segment] + TAIL[segment + 1]) / 2).length < 0.22 and p.y < -0.5:
-			fur = 0.12
+		if (p - (TAIL[segment] + TAIL[segment + 1]) / 2).length < 0.15 and p.y < -0.5:
+			fur = 0.075
 			direction = TAIL[segment + 1] - TAIL[segment]
 		# none around the eyes and nose
 		for eye in EYES:
@@ -261,7 +278,17 @@ class _Tree:
 
 
 def _fur(body, fur_material, density):
-	tree = bpy.data.node_groups.new("CatFur", "GeometryNodeTree")
+	"""Fur grown on the rest pose once, then bent along with the posed body by Deform Curves on Surface."""
+	# the strands find their spot on the skin again each frame by its UV coordinate
+	bpy.context.view_layer.objects.active = body
+	for obj in bpy.context.view_layer.objects:
+		obj.select_set(obj is body)
+	bpy.ops.object.mode_set(mode="EDIT")
+	bpy.ops.mesh.select_all(action="SELECT")
+	bpy.ops.uv.smart_project(island_margin=0.002)
+	bpy.ops.object.mode_set(mode="OBJECT")
+
+	tree = bpy.data.node_groups.new("CatFurGrow", "GeometryNodeTree")
 	tree.interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
 	tree.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
 	t = _Tree(tree)
@@ -276,39 +303,28 @@ def _fur(body, fur_material, density):
 			data_type=data_type, domain=domain)
 		return t.out(n, "Geometry")
 
-	position = t.out(t.node("GeometryNodeInputPosition"), "Position")
-	normal = t.out(t.node("GeometryNodeInputNormal"), "Normal")
-	body_info = t.node("GeometryNodeObjectInfo", {"Object": body}, transform_space="RELATIVE")
-	posed = store(t.out(body_info, "Geometry"), "def_pos", position)
-	posed = store(posed, "def_nrm", normal)
-	rest = t.out(t.node("GeometryNodeSetPosition", {"Geometry": posed, "Position": named("rest_position")}), "Geometry")
-
+	skin = t.out(t.node("GeometryNodeObjectInfo", {"Object": body}, transform_space="RELATIVE"), "Geometry")
 	has_fur = t.out(t.node("FunctionNodeCompare", {"A": named("fur_len", "FLOAT"), "B": 0.004},
 		data_type="FLOAT", operation="GREATER_THAN"), "Result")
-	distribute = t.node("GeometryNodeDistributePointsOnFaces", {"Mesh": rest, "Selection": has_fur,
+	distribute = t.node("GeometryNodeDistributePointsOnFaces", {"Mesh": skin, "Selection": has_fur,
 		"Density": density, "Seed": 7}, distribute_method="RANDOM")
 	points = t.out(distribute, "Points")
+	position = t.out(t.node("GeometryNodeInputPosition"), "Position")
 
-	def sample(value, data_type="FLOAT_VECTOR", at=None):
-		n = t.node("GeometryNodeSampleNearestSurface", {"Mesh": rest, "Value": value}, data_type=data_type)
-		if at is not None:
-			t.set(n, "Sample Position", at)
+	def sample(value, data_type="FLOAT_VECTOR"):
+		n = t.node("GeometryNodeSampleNearestSurface", {"Mesh": skin, "Value": value}, data_type=data_type)
 		return t.out(n, "Value")
 
-	root = sample(named("def_pos"))
-	n = t.vmath("NORMALIZE", sample(named("def_nrm")))
-	comb_rest = sample(named("comb"))
-	ahead = sample(named("def_pos"), at=t.vmath("ADD", position, t.vmath("SCALE", comb_rest, scale=0.03)))
-	comb = t.vmath("NORMALIZE", t.vmath("SUBTRACT", ahead, root))
-	comb = t.vmath("NORMALIZE", t.vmath("SUBTRACT", comb, t.vmath("SCALE", n,
-		scale=t.vmath("DOT_PRODUCT", comb, n))))
+	n = t.vmath("NORMALIZE", t.out(distribute, "Normal"))
+	comb = sample(named("comb"))
+	comb = t.vmath("NORMALIZE", t.vmath("SUBTRACT", comb, t.vmath("SCALE", n, scale=t.vmath("DOT_PRODUCT", comb, n))))
 	random = t.out(t.node("FunctionNodeRandomValue", {"Min": 0.75, "Max": 1.2, "Seed": 3}, data_type="FLOAT"), 0)
 	length = t.math("MULTIPLY", sample(named("fur_len", "FLOAT"), "FLOAT"), random)
-	points = store(points, "root", root)
+	points = store(points, "root", position)
 	points = store(points, "n", n)
 	points = store(points, "t", comb)
 	points = store(points, "len", length, "FLOAT")
-	points = store(points, "root_rest", position)
+	points = store(points, "uv", sample(named("UVMap")))
 
 	line = t.node("GeometryNodeCurvePrimitiveLine", {"Start": (0, 0, 0), "End": (0, 0, 1)})
 	line = t.node("GeometryNodeResampleCurve", {"Curve": t.out(line, "Curve"), "Count": 6})
@@ -321,75 +337,98 @@ def _fur(body, fur_material, density):
 	along = t.math("MULTIPLY", f, t.math("MULTIPLY_ADD", f, 0.6, 0.4))
 	strand = t.vmath("ADD", t.vmath("SCALE", named("n"), scale=lift), t.vmath("SCALE", named("t"), scale=along))
 	strand = t.vmath("SCALE", strand, scale=named("len", "FLOAT"))
-	# clumps: the tips lean towards the centre of their Voronoi cell, in rest space
-	root_rest = named("root_rest")
-	voronoi = t.node("ShaderNodeTexVoronoi", {"Vector": root_rest, "Scale": 36.0}, voronoi_dimensions="3D")
-	clump = t.vmath("SCALE", t.vmath("SUBTRACT", t.out(voronoi, "Position"), root_rest),
+	# clumps: the tips lean towards the centre of their Voronoi cell
+	root = named("root")
+	voronoi = t.node("ShaderNodeTexVoronoi", {"Vector": root, "Scale": 36.0}, voronoi_dimensions="3D")
+	clump = t.vmath("SCALE", t.vmath("SUBTRACT", t.out(voronoi, "Position"), root),
 		scale=t.math("MULTIPLY", t.math("POWER", f, 1.5), 0.75))
-	noise = t.node("ShaderNodeTexNoise", {"Vector": t.vmath("SCALE", root_rest, scale=40.0), "Scale": 1.0,
+	noise = t.node("ShaderNodeTexNoise", {"Vector": t.vmath("SCALE", root, scale=40.0), "Scale": 1.0,
 		"Detail": 1.0}, noise_dimensions="3D")
 	frizz = t.vmath("SCALE", t.vmath("SUBTRACT", t.out(noise, "Color"), (0.5, 0.5, 0.5)),
 		scale=t.math("MULTIPLY", t.math("MULTIPLY", f, named("len", "FLOAT")), 0.4))
-	tip = t.vmath("ADD", t.vmath("ADD", named("root"), strand), t.vmath("ADD", clump, frizz))
+	tip = t.vmath("ADD", t.vmath("ADD", root, strand), t.vmath("ADD", clump, frizz))
 	curves = t.out(t.node("GeometryNodeSetPosition", {"Geometry": curves, "Position": tip}), "Geometry")
 	radius = t.math("MULTIPLY", t.math("MULTIPLY_ADD", f, -0.85, 1.0), 0.0026)
 	curves = t.out(t.node("GeometryNodeSetCurveRadius", {"Curve": curves, "Radius": radius}), "Curve")
-	curves = t.out(t.node("GeometryNodeSetMaterial", {"Geometry": curves, "Material": fur_material}), "Geometry")
+	curves = store(curves, "root_rest", root, domain="CURVE")
+	curves = store(curves, "surface_uv_coordinate", named("uv"), "FLOAT2", "CURVE")
 	t.links.new(curves, group_out.inputs[0])
 
 	fur = bpy.data.objects.new("CatFur", bpy.data.hair_curves.new("CatFur"))
 	bpy.context.scene.collection.objects.link(fur)
 	fur.data.materials.append(fur_material)
-	fur.modifiers.new("Fur", "NODES").node_group = tree
+	fur.modifiers.new("Grow", "NODES").node_group = tree
+	bpy.context.view_layer.objects.active = fur
+	bpy.ops.object.modifier_apply(modifier="Grow")
+	bpy.data.node_groups.remove(tree)
+	# applying takes the nodes' (empty) material list, and the working attributes came along
+	fur.data.materials.clear()
+	fur.data.materials.append(fur_material)
+	for name in [a.name for a in fur.data.attributes]:
+		if name not in ("position", "radius", "curve_type", "root_rest", "surface_uv_coordinate"):
+			fur.data.attributes.remove(fur.data.attributes[name])
+
+	fur.parent = body
+	fur.data.surface = body
+	fur.data.surface_uv_map = "UVMap"
+	deform = bpy.data.node_groups.new("CatFurDeform", "GeometryNodeTree")
+	deform.interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+	deform.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+	d = _Tree(deform)
+	node = d.node("GeometryNodeDeformCurvesOnSurface", {"Curves": d.out(d.node("NodeGroupInput"), 0)})
+	d.links.new(d.out(node, 0), d.node("NodeGroupOutput").inputs[0])
+	fur.modifiers.new("Deform", "NODES").node_group = deform
 	return fur
 
 
-def _coat_pattern(t, coat, p):
-	"""Shader nodes for the coat at rest position p: returns (stripe, white) factors."""
+def _white(t, p, level):
+	"""Shader nodes for how white the coat is at rest position p: a little (belly, chest, muzzle, paws) or a lot."""
 	sep = t.node("ShaderNodeSeparateXYZ", {"Vector": p})
 	x, y, z = t.out(sep, "X"), t.out(sep, "Y"), t.out(sep, "Z")
-	wave = t.node("ShaderNodeTexWave", {"Vector": p, "Scale": 2.1, "Distortion": 5.0, "Detail": 2.0,
-		"Detail Scale": 1.5}, wave_type="BANDS", bands_direction="Y")
-	stripe = t.math("MULTIPLY", t.map_range(t.out(wave, "Fac"), 0.62, 0.85), coat["stripes"])
-	middle = t.map_range(t.math("ABSOLUTE", x), 0.2, 0.1)
-	belly = t.math("MULTIPLY", t.map_range(z, 0.42, 0.32), middle)
-	chest = t.math("MULTIPLY", t.math("MULTIPLY", t.map_range(y, 0.3, 0.45), t.map_range(z, 0.88, 0.75)), middle)
-	muzzle = t.map_range(t.vmath("DISTANCE", p, tuple(MUZZLE + Vector((0, 0, -0.03)))), 0.25, 0.18)
-	paws = t.map_range(z, 0.14, 0.09)
+	absx = t.math("ABSOLUTE", x)
+	high = level == "high"
+	middle = t.map_range(absx, 0.28 if high else 0.2, 0.16 if high else 0.1)
+	belly = t.math("MULTIPLY", t.map_range(z, 0.52 if high else 0.42, 0.42 if high else 0.32), middle)
+	chest = t.math("MULTIPLY", t.math("MULTIPLY", t.map_range(y, 0.22 if high else 0.3, 0.36 if high else 0.45),
+		t.map_range(z, 0.98 if high else 0.88, 0.84 if high else 0.75)), middle)
+	muzzle = t.map_range(t.vmath("DISTANCE", p, tuple(MUZZLE + Vector((0, 0, -0.03)))), 0.3 if high else 0.25,
+		0.22 if high else 0.18)
+	paws = t.map_range(z, 0.32 if high else 0.14, 0.24 if high else 0.09)
 	white = t.math("MAXIMUM", t.math("MAXIMUM", belly, chest), t.math("MAXIMUM", muzzle, paws))
-	white = t.math("MULTIPLY", white, coat["white"])
-	return stripe, white
+	if high:
+		# a white blaze up the middle of the face
+		blaze = t.math("MULTIPLY", t.map_range(absx, 0.07, 0.03), t.map_range(y, HEAD.y + 0.2, HEAD.y + 0.3))
+		white = t.math("MAXIMUM", white, blaze)
+	return white
 
 
-def _fur_material(coat):
+def _marks(t, p, kind):
+	"""Shader nodes for tabby stripes or calico patches at rest position p."""
+	if kind == "stripes":
+		wave = t.node("ShaderNodeTexWave", {"Vector": p, "Scale": 2.1, "Distortion": 5.0, "Detail": 2.0,
+			"Detail Scale": 1.5}, wave_type="BANDS", bands_direction="Y")
+		return t.map_range(t.out(wave, "Fac"), 0.62, 0.85)
+	noise = t.node("ShaderNodeTexNoise", {"Vector": p, "Scale": 2.4, "Detail": 3.0, "Roughness": 0.55})
+	return t.map_range(t.out(noise, "Fac"), 0.5, 0.56)
+
+
+def _fur_material():
 	material = bpy.data.materials.new("CatFur")
 	material.use_nodes = True
 	t = _Tree(material.node_tree)
 	t.nodes.clear()
-	p = t.out(t.node("ShaderNodeAttribute", attribute_name="root_rest", attribute_type="GEOMETRY"), "Vector")
-	stripe, white = _coat_pattern(t, coat, p)
-	# direct colours rather than melanin, for the saturated coats of an animated film
-	colour = t.node("ShaderNodeMix", {"A": (*coat["fur"], 1), "B": (*coat["stripe"], 1), "Factor": stripe},
-		data_type="RGBA")
-	colour = t.node("ShaderNodeMix", {"A": t.out(colour, "Result"), "B": (0.95, 0.93, 0.9, 1), "Factor": white},
-		data_type="RGBA")
-	hair = t.node("ShaderNodeBsdfHairPrincipled", {"Color": t.out(colour, "Result"), "Roughness": 0.4,
+	hair = t.node("ShaderNodeBsdfHairPrincipled", {"Color": (0.92, 0.9, 0.87, 1), "Roughness": 0.4,
 		"Radial Roughness": 0.7, "Coat": 0.08, "Random Roughness": 0.2}, parametrization="COLOR")
-	output = t.node("ShaderNodeOutputMaterial")
-	t.links.new(t.out(hair, 0), output.inputs["Surface"])
+	t.links.new(t.out(hair, 0), t.node("ShaderNodeOutputMaterial").inputs["Surface"])
 	return material
 
 
-def _skin_material(coat):
+def _skin_material():
 	material = bpy.data.materials.new("CatSkin")
 	material.use_nodes = True
 	t = _Tree(material.node_tree)
-	p = t.out(t.node("ShaderNodeAttribute", attribute_name="rest_position", attribute_type="GEOMETRY"), "Vector")
-	_, white = _coat_pattern(t, coat, p)
-	base = t.node("ShaderNodeMix", {"A": (*coat["skin"], 1), "B": (0.8, 0.77, 0.72, 1), "Factor": white},
-		data_type="RGBA")
 	pink = t.out(t.node("ShaderNodeAttribute", attribute_name="pink", attribute_type="GEOMETRY"), "Fac")
-	base = t.node("ShaderNodeMix", {"A": t.out(base, "Result"), "B": (0.95, 0.55, 0.55, 1), "Factor": pink},
+	base = t.node("ShaderNodeMix", {"A": (0.85, 0.83, 0.8, 1), "B": (0.95, 0.55, 0.55, 1), "Factor": pink},
 		data_type="RGBA")
 	bsdf = t.nodes["Principled BSDF"]
 	t.links.new(t.out(base, "Result"), _sock(bsdf.inputs, "Base Color"))
@@ -398,7 +437,25 @@ def _skin_material(coat):
 	return material
 
 
-def _eye_material(coat):
+def _mask_material(name, pattern, attribute):
+	"""Emits (coat, markings, 0) for a pattern set, unlit: where the coat and markings tints apply."""
+	material = bpy.data.materials.new(name)
+	material.use_nodes = True
+	t = _Tree(material.node_tree)
+	t.nodes.clear()
+	p = t.out(t.node("ShaderNodeAttribute", attribute_name=attribute, attribute_type="GEOMETRY"), "Vector")
+	coat = t.math("SUBTRACT", 1.0, _white(t, p, pattern["white"]))
+	if attribute == "rest_position":
+		pink = t.out(t.node("ShaderNodeAttribute", attribute_name="pink", attribute_type="GEOMETRY"), "Fac")
+		coat = t.math("MULTIPLY", coat, t.math("SUBTRACT", 1.0, pink))
+	marks = t.math("MULTIPLY", coat, _marks(t, p, pattern["marks"]))
+	colour = t.node("ShaderNodeCombineXYZ", {"X": coat, "Y": marks, "Z": 0.0})
+	emission = t.node("ShaderNodeEmission", {"Color": t.out(colour, 0), "Strength": 1.0})
+	t.links.new(t.out(emission, 0), t.node("ShaderNodeOutputMaterial").inputs["Surface"])
+	return material
+
+
+def _eye_material():
 	material = bpy.data.materials.new("CatEye")
 	material.use_nodes = True
 	t = _Tree(material.node_tree)
@@ -411,7 +468,7 @@ def _eye_material(coat):
 		t.math("MULTIPLY", t.math("SUBTRACT", t.out(streaks, "Fac"), 0.5), 0.06))})
 	ramp = ring.color_ramp
 	ramp.interpolation = "EASE"
-	inner, outer = coat["iris"]
+	inner, outer = IRIS
 	stops = [(0.0, (0.0, 0.0, 0.0)), (0.4, (0.01, 0.01, 0.01)), (0.44, inner), (0.64, outer), (0.74, (0.3, 0.18, 0.04)),
 		(0.82, (0.08, 0.05, 0.02)), (1.0, (0.05, 0.03, 0.01))]
 	ramp.elements[0].position, ramp.elements[0].color = stops[0][0], (*stops[0][1], 1)
@@ -435,8 +492,8 @@ def _simple_material(name, color, roughness=0.5):
 	return material
 
 
-def _eyes(coat):
-	material = _eye_material(coat)
+def _eyes():
+	material = _eye_material()
 	eyes = []
 	for side, centre in zip((-1, 1), EYES):
 		bpy.ops.mesh.primitive_uv_sphere_add(radius=EYE_RADIUS, location=centre, segments=48, ring_count=24)
@@ -460,12 +517,75 @@ def _nose():
 	return nose
 
 
-def build(coat_name="orange-tabby", density=60000):
-	"""Returns the body, the parts that move with it (body included) and the fur, which follows it on its own."""
-	coat = COATS[coat_name]
-	body = _body()
-	_fur_fields(body)
-	body.data.materials.append(_skin_material(coat))
-	fur = _fur(body, _fur_material(coat), density)
-	eyes = _eyes(coat)
-	return body, [body, _nose(), *eyes], fur, eyes
+def _x_eye_material(name, mask):
+	"""Comical X eyes for a knocked out cat: an X on fur, the fur taking the coat colour in the masks."""
+	material = bpy.data.materials.new(name)
+	material.use_nodes = True
+	t = _Tree(material.node_tree)
+	local = t.out(t.node("ShaderNodeTexCoord"), "Object")
+	sep = t.node("ShaderNodeSeparateXYZ", {"Vector": local})
+	u, v = t.out(sep, "X"), t.out(sep, "Z")
+	line = t.math("MINIMUM", t.math("ABSOLUTE", t.math("SUBTRACT", u, v)), t.math("ABSOLUTE", t.math("ADD", u, v)))
+	x = t.math("MULTIPLY", t.math("LESS_THAN", line, 0.024), t.math("LESS_THAN", t.vmath("LENGTH", t.out(
+		t.node("ShaderNodeCombineXYZ", {"X": u, "Z": v}), 0)), 0.095))
+	if mask:
+		t.nodes.remove(t.nodes["Principled BSDF"])
+		colour = t.node("ShaderNodeCombineXYZ", {"X": t.math("SUBTRACT", 1.0, x), "Y": 0.0, "Z": 0.0})
+		emission = t.node("ShaderNodeEmission", {"Color": t.out(colour, 0)})
+		t.links.new(t.out(emission, 0), t.nodes["Material Output"].inputs["Surface"])
+	else:
+		bsdf = t.nodes["Principled BSDF"]
+		colour = t.node("ShaderNodeMix", {"A": (0.85, 0.83, 0.8, 1), "B": (0.02, 0.02, 0.02, 1), "Factor": x},
+			data_type="RGBA")
+		t.links.new(t.out(colour, "Result"), _sock(bsdf.inputs, "Base Color"))
+		bsdf.inputs["Roughness"].default_value = 0.8
+	return material
+
+
+class Cat:
+	"""The built cat: its objects, and looks to switch between for the colour and mask passes."""
+
+	def __init__(self, density):
+		self.body = _body()
+		_fur_fields(self.body)
+		self.body.data.materials.append(_skin_material())
+		self.fur = _fur(self.body, _fur_material(), density)
+		self.eyes = _eyes()
+		self.nose = _nose()
+		# the body and what moves rigidly with it; the fur is the body's child
+		self.parts = [self.body, self.nose, *self.eyes]
+		self.subjects = self.parts + [self.fur]
+		black = bpy.data.materials.new("Unmasked")
+		black.use_nodes = True
+		black.node_tree.nodes.clear()
+		t = _Tree(black.node_tree)
+		t.links.new(t.out(t.node("ShaderNodeEmission", {"Color": (0, 0, 0, 1)}), 0),
+			t.node("ShaderNodeOutputMaterial").inputs["Surface"])
+		self._looks = {"colour": {self.fur: self.fur.data.materials[0], self.body: self.body.data.materials[0],
+			self.nose: self.nose.data.materials[0], **{eye: eye.data.materials[0] for eye in self.eyes}}}
+		for name, pattern in PATTERNS.items():
+			self._looks[name] = {self.fur: _mask_material(f"FurMask.{name}", pattern, "root_rest"),
+				self.body: _mask_material(f"SkinMask.{name}", pattern, "rest_position"), self.nose: black,
+				**{eye: black for eye in self.eyes}}
+		self._x_eyes = {"colour": _x_eye_material("XEye", False), "mask": _x_eye_material("XEyeMask", True)}
+		self.knocked_out = False
+		self._look = "colour"
+
+	def look(self, name):
+		self._look = name
+		for obj, material in self._looks[name].items():
+			obj.data.materials[0] = material
+		if self.knocked_out:
+			for eye in self.eyes:
+				eye.data.materials[0] = self._x_eyes["colour" if name == "colour" else "mask"]
+
+	def knock_out(self, out):
+		"""X eyes, flattened into their sockets, or open eyes again."""
+		self.knocked_out = out
+		for eye in self.eyes:
+			eye.scale = (1, 0.35 if out else 1, 1)
+		self.look(self._look)
+
+
+def build(density=60000):
+	return Cat(density)

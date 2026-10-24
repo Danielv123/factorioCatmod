@@ -1,8 +1,8 @@
 # The render scene: an orthographic camera looking north at 45 degrees as Factorio's sprites are rendered, a sun from
 # the west at 45 degrees (vanilla shadows fall about as far east as the body is high), and a ground plane that only
 # bounces light, or catches the shadow in the shadow pass. 1 Blender unit is 1 tile; a scale 1 sprite has 64 px per
-# tile, as Factorio draws it at scale 0.5. The cat is drawn SIZE times larger than it is modelled, to stand as big as the
-# vanilla enemy it replaces.
+# tile, as Factorio draws it at scale 0.5. The cat is drawn SIZE times larger than it is modelled, to stand as big as
+# the vanilla enemy it replaces.
 import math
 
 import bpy
@@ -29,6 +29,8 @@ def setup(width, height, samples=64):
 	scene.cycles.denoiser = "OPTIX"
 	scene.cycles.max_bounces = 6
 	scene.render.film_transparent = True
+	# keep the scene on the GPU between renders, so a frame only updates what moved
+	scene.render.use_persistent_data = True
 	scene.render.resolution_x = width
 	scene.render.resolution_y = height
 	scene.render.resolution_percentage = 100
@@ -99,3 +101,33 @@ def catchlight(eyes):
 	light.light_linking.receiver_collection = collection
 	bpy.context.scene.collection.objects.link(light)
 	return light
+
+
+def render_layers(scene, ground, cat, patterns, path):
+	"""Renders the current pose: the colour, the shadow, and each pattern set's masks (coat in red, markings in green,
+	unlit and untouched by colour management). Returns them as arrays by name."""
+	import sheet
+
+	def render():
+		scene.render.filepath = path
+		bpy.ops.render.render(write_still=True)
+		return sheet.load(path)
+
+	layers = {}
+	cat.look("colour")
+	for name, shadow in (("colour", False), ("shadow", True)):
+		set_pass(ground, cat.subjects, shadow)
+		layers[name] = render()
+	settings = (scene.view_settings.view_transform, scene.view_settings.look, scene.cycles.samples,
+		scene.cycles.use_denoising)
+	set_pass(ground, cat.subjects, False)
+	scene.view_settings.view_transform = "Raw"
+	scene.cycles.samples = 32
+	scene.cycles.use_denoising = False
+	for pattern in patterns:
+		cat.look(pattern)
+		layers[pattern] = render()
+	scene.view_settings.view_transform, scene.view_settings.look, scene.cycles.samples, \
+		scene.cycles.use_denoising = settings
+	cat.look("colour")
+	return layers
