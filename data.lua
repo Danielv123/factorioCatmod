@@ -1,25 +1,21 @@
 -- Cats are the base game biters with a cat's run animation, icon and sounds. With catmod_replace_bitter the biters
 -- themselves turn into cats, otherwise the cats are new units next to them.
 
+local util = require("util")
+
 local function cat_run_animation(scale)
+	local function layer(name, extra)
+		local options = {frame_count = 1, direction_count = 16, scale = scale * 0.5, multiply_shift = scale,
+			usage = "enemy"}
+		for key, value in pairs(extra or {}) do
+			options[key] = value
+		end
+		return util.sprite_load("__catmod__/graphics/cat/orange-tabby/" .. name, options)
+	end
 	return {
 		layers = {
-			{
-				width = 512,
-				height = 300,
-				frame_count = 5,
-				direction_count = 16,
-				animation_speed = 0.3,
-				shift = {scale * 0.714844, scale * -0.246094},
-				scale = scale * 0.5,
-				stripes = {
-					{
-						filename = "__catmod__/graphics/cat_hr.png",
-						width_in_frames = 8,
-						height_in_frames = 10,
-					},
-				},
-			},
+			layer("stand"),
+			layer("stand-shadow", {draw_as_shadow = true}),
 		},
 	}
 end
