@@ -40,7 +40,8 @@ TAIL = _catmull_rom([Vector(p) for p in ((0, -0.55, 0.64), (0, -0.78, 0.74), (0,
 TAIL_RADII = [0.068 - 0.03 * i / (len(TAIL) - 1) for i in range(len(TAIL))]
 # each ear: its base on the head, tilted outward and a little back
 EARS = [Matrix.Translation(HEAD + Vector((side * 0.25, -0.06, 0.31)))
-	@ Matrix.Rotation(math.radians(-side * 24), 4, "Y") @ Matrix.Rotation(math.radians(-10), 4, "X") @ Matrix.Rotation(math.radians(side * 14), 4, "Z") for side in (-1, 1)]
+	@ Matrix.Rotation(math.radians(-side * 24), 4, "Y") @ Matrix.Rotation(math.radians(-10), 4, "X")
+	@ Matrix.Rotation(math.radians(side * 14), 4, "Z") for side in (-1, 1)]
 
 # The fur renders white; Factorio tints it with mask layers. A pattern set is a white-patch level and a kind of
 # markings, each giving a coat mask (everything not white) and a markings mask (stripes or patches on the coat).
