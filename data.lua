@@ -38,10 +38,14 @@ end
 
 local replace = settings.startup["catmod_replace_bitter"].value
 local cats = {
-	{biter = "small-biter", cat = "small-cat", explosion = "blood-explosion-small", scale = 0.5, volume = 0.4, order = "b-b-a"},
-	{biter = "medium-biter", cat = "medium-cat", explosion = "blood-explosion-small", scale = 0.7, volume = 0.5, order = "b-b-b"},
-	{biter = "big-biter", cat = "big-cat", explosion = "blood-explosion-big", scale = 1.0, volume = 0.6, order = "b-b-c"},
-	{biter = "behemoth-biter", cat = "behemoth-cat", explosion = "blood-explosion-big", scale = 1.2, volume = 0.8, order = "b-b-d"},
+	{biter = "small-biter", cat = "small-cat", explosion = "blood-explosion-small",
+		scale = 0.5, volume = 0.4, order = "b-b-a"},
+	{biter = "medium-biter", cat = "medium-cat", explosion = "blood-explosion-small",
+		scale = 0.7, volume = 0.5, order = "b-b-b"},
+	{biter = "big-biter", cat = "big-cat", explosion = "blood-explosion-big",
+		scale = 1.0, volume = 0.6, order = "b-b-c"},
+	{biter = "behemoth-biter", cat = "behemoth-cat", explosion = "blood-explosion-big",
+		scale = 1.2, volume = 0.8, order = "b-b-d"},
 }
 
 for _, def in pairs(cats) do

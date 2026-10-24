@@ -6,6 +6,5 @@ data:extend({
     setting_type = "startup",
     default_value = true,
 	order = "ba"
-  },  
-  
+  },
 })
