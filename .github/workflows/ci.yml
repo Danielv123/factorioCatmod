@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Lint and build the mod zip
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        lfs: false
+    - run: sudo apt-get update && sudo apt-get install -y lua-check zip
+    - run: luacheck .
+    - name: Build the mod zip
+      run: .github/build_mod.sh
+    - uses: actions/upload-artifact@v7
+      with:
+        name: mod
+        path: dist/*.zip
+
+  # A v* tag: the mod to the mod portal. The tag must match info.json's version.
+  release:
+    name: Release to the mod portal
+    needs: test
+    if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        lfs: false
+    - run: sudo apt-get update && sudo apt-get install -y zip
+    - name: The tag and info.json agree
+      run: |
+        version=$(jq -r .version info.json)
+        test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME, info.json $version"; exit 1; }
+        echo "NAME=$(jq -r .name info.json)" >> "$GITHUB_ENV"
+        echo "VERSION=$version" >> "$GITHUB_ENV"
+    - run: .github/build_mod.sh
+    # Skips a version already out, so a release that failed halfway can be re-run.
+    - name: Upload the mod to the mod portal
+      env:
+        FACTORIO_MOD_TOKEN: ${{ secrets.FACTORIO_MOD_TOKEN }}
+      run: |
+        if curl -sS --fail-with-body "https://mods.factorio.com/api/mods/$NAME" \
+          | jq -e --arg v "$VERSION" 'any(.releases[]; .version == $v)' > /dev/null; then
+          echo "the mod portal has $VERSION"; exit 0
+        fi
+        url=$(curl -sS --fail-with-body -X POST https://mods.factorio.com/api/v2/mods/releases/init_upload \
+          -H "Authorization: Bearer $FACTORIO_MOD_TOKEN" -F "mod=$NAME" | jq -er .upload_url)
+        curl -sS --fail-with-body -X POST "$url" -F "file=@dist/${NAME}_$VERSION.zip" | tee /dev/stderr | jq -e .success
