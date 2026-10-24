@@ -1,11 +1,9 @@
-
 {
 "name": "catmod",
 "title": "Cats",
-"version": "2.0.1",
-"date": "08-09-2017",
+"version": "3.0.0",
 "author": "Danielv123",
-"dependencies": ["base >= 0.15"],
-"factorio_version": "0.16",
+"dependencies": ["base >= 2.1"],
+"factorio_version": "2.1",
 "description": "Replaces biters with cute cats, because it had to happen."
 }
