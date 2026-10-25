@@ -58,6 +58,49 @@ end
 
 local replace = settings.startup["catmod_replace_bitter"].value
 
+-- a tuft of white fur, tinted to the coat by whatever throws it
+local tuft = require("graphics.cat.tuft.tuft")
+data:extend({{
+	type = "optimized-particle",
+	name = "catmod-fur-tuft",
+	life_time = 100,
+	fade_away_duration = 40,
+	render_layer = "projectile",
+	render_layer_when_on_ground = "corpse",
+	movement_modifier_when_on_ground = 0,
+	pictures = {sheet = {filename = "__catmod__/graphics/cat/tuft/tuft-1.png", width = tuft.width, height = tuft.height,
+		variation_count = 4, line_length = 4, scale = 0.35}},
+}})
+
+-- a puff of tufts in a coat's colour, where purple biter blood would have been
+local function fur_puff(tint, count, speed)
+	return {{
+		type = "create-particle",
+		particle_name = "catmod-fur-tuft",
+		repeat_count = count,
+		tint = tint,
+		offset_deviation = {{-0.3, -0.3}, {0.3, 0.3}},
+		initial_height = 0.6,
+		initial_height_deviation = 0.3,
+		initial_vertical_speed = 0.04,
+		initial_vertical_speed_deviation = 0.03,
+		speed_from_center = speed,
+		speed_from_center_deviation = speed * 0.6,
+		frame_speed = 1,
+		show_in_tooltip = false,
+	}}
+end
+
+-- a family's portrait, wearing the coat
+local function cat_icons(family, variant)
+	local folder = "__catmod__/graphics/cat/icons/" .. family
+	return {
+		{icon = folder .. ".png", icon_size = 64},
+		{icon = folder .. "-coat-" .. variant.pattern .. ".png", icon_size = 64, tint = variant.coat},
+		{icon = folder .. "-marks-" .. variant.pattern .. ".png", icon_size = 64, tint = variant.marks},
+	}
+end
+
 -- a corpse that plays the cat flopping over and stays on its last frame: no blood puddle, no decay
 local function cat_corpse(name, from, family, scale, variant)
 	local corpse = table.deepcopy(data.raw["corpse"][from])
@@ -90,9 +133,8 @@ for _, tier in pairs(tiers) do
 		local scale = tier.scale * variant.size
 		local family = tier.family
 		cat.localised_name = {"entity-name." .. tier.cat}
-		cat.icon = "__catmod__/graphics/cat_icon.png"
-		cat.icon_size = 128
-		cat.icons = nil
+		cat.icon = nil
+		cat.icons = cat_icons(family, variant)
 		cat.run_animation = cat_animation(family, "run", scale, variant, {frame_count = 16, direction_count = 16})
 		if family == "biter" then
 			-- the gallop covers more ground a cycle than the spitters' trot
@@ -111,11 +153,14 @@ for _, tier in pairs(tiers) do
 		cat.running_sound_animation_positions = nil
 		local corpse = cat_corpse(cat.name .. "-corpse", tier.unit .. "-corpse", family, scale, variant)
 		corpse.localised_name = {"entity-name." .. tier.cat}
+		corpse.icon = nil
+		corpse.icons = cat_icons(family, variant)
 		data:extend({corpse})
 		cat.corpse = corpse.name
-		-- no purple biter blood
+		-- fur flies instead of purple biter blood
 		cat.dying_explosion = nil
-		cat.damaged_trigger_effect = nil
+		cat.dying_trigger_effect = fur_puff(variant.coat, math.floor(6 + 8 * scale), 0.035)
+		cat.damaged_trigger_effect = fur_puff(variant.coat, 1, 0.02)
 		cat.attack_parameters.sound = cat_sound(tier.volume, {"meow2"})
 		cat.dying_sound = cat_sound(tier.volume, {"cat-die"})
 		cat.working_sound = {
@@ -150,8 +195,11 @@ if replace then
 		turret.ending_attack_animation = box("attack", scale, variant,
 			{frame_count = 10, direction_count = 16, run_mode = "backward"})
 		turret.integration = nil
+		turret.icon = nil
+		turret.icons = cat_icons("worm", variant)
 		turret.dying_explosion = nil
-		turret.damaged_trigger_effect = nil
+		turret.dying_trigger_effect = fur_puff(variant.coat, math.floor(8 + 8 * scale), 0.035)
+		turret.damaged_trigger_effect = fur_puff(variant.coat, 1, 0.02)
 		local parameters = {}
 		for i, mouth in pairs(box_mouths) do
 			local angle = (i - 1) / 16 * 2 * math.pi
@@ -195,6 +243,7 @@ if replace then
 		end
 		spawner.graphics_set.animations = idle
 		spawner.dying_explosion = nil
+		spawner.dying_trigger_effect = fur_puff({0.95, 0.85, 0.7}, 24, 0.05)
 		spawner.damaged_trigger_effect = nil
 		local corpse = data.raw["corpse"][spawner_name .. "-corpse"]
 		corpse.animation = dead

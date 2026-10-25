@@ -46,7 +46,7 @@ root = bpy.data.objects.new("Root", None)
 sc.collection.objects.link(root)
 armature.parent = root
 
-patterns = list(cat_module.PATTERNS)
+patterns = list(anim.FAMILIES[family]["patterns"])
 tmp = os.path.join(bpy.app.tempdir, "frame.png")
 layers = {}
 mouths = []

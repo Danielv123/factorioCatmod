@@ -1,7 +1,7 @@
-# Renders the nests: a plush cat bed (biters) or a wicker basket with a blanket (spitters) with a pile of kittens
-# asleep in it, in four variations of bed colour and kitten arrangement. The idle loop has them breathing, an ear
-# twitching and a tail tip flicking; the death has them wake with a start and flop over, knocked out. Each kitten's coat
-# is composited in here, so the sheets need no tinting: graphics/cat/<family>-nest/idle-v<n> and die-v<n>.
+# Renders the nests: a plush cat bed (biters) or a wicker basket with a blanket (spitters) with three kittens curled
+# up asleep in it, in four variations of bed colour and kitten arrangement. The idle loop has them breathing and a
+# tail tip flicking; the death has them wake with a start and flop over, knocked out. Each kitten's coat is composited
+# in here, so the sheets need no tinting: graphics/cat/<family>-nest/idle-v<n> and die-v<n>.
 #   blender -b --factory-startup -P nest.py -- [biter|spitter]
 import math
 import os
@@ -18,10 +18,11 @@ import cat as cat_module  # noqa: E402
 import rig  # noqa: E402
 import scene  # noqa: E402
 import sheet  # noqa: E402
-from anim import _aim_tail, _bump, _ease, _set, TAIL_BONES, rest  # noqa: E402
+from anim import _bump, _ease  # noqa: E402
 
 WIDTH, HEIGHT = 512, 448
 KITTEN = 0.5
+KITTENS = 3
 IDLE_FRAMES, DIE_FRAMES = 7, 18
 
 args = sys.argv[sys.argv.index("--") + 1:]
@@ -44,12 +45,19 @@ BEDS = {
 
 
 def arrangement(variation):
+	"""Three kittens curled nose to tail in a ring round the bed's middle."""
 	random.seed(17 + variation * 31)
-	places = [(-0.42, 0.25), (0.45, 0.3), (-0.2, -0.42), (0.35, -0.35)]
-	random.shuffle(places)
-	coats = random.sample(range(len(COATS)), 4)
-	return [(x + random.uniform(-0.06, 0.06), y + random.uniform(-0.06, 0.06), random.uniform(0, 360), coats[i],
-		random.choice((-1, 1)), random.random()) for i, (x, y) in enumerate(places)]
+	start = random.uniform(0, 360)
+	coats = random.sample(range(len(COATS)), KITTENS)
+	kittens = []
+	for i in range(KITTENS):
+		around = math.radians(start + i * 360 / KITTENS + random.uniform(-12, 12))
+		radius = 0.5 + random.uniform(-0.05, 0.05)
+		# facing along the ring, anticlockwise, with a little turn in or out
+		facing = math.degrees(around) + 180 + random.uniform(-15, 15)
+		kittens.append((radius * math.cos(around), radius * math.sin(around), facing, coats[i], random.choice((-1, 1)),
+			random.random()))
+	return kittens
 
 
 def fabric(name, colour, plaid=False):
@@ -152,40 +160,11 @@ def colour_bed(objects, variation):
 		blanket.data.materials.append(fabric("Blanket", BEDS[variation], plaid=True))
 
 
-def loaf(arm, kitten, breath, wake=0.0, out=0.0):
-	"""Asleep as a loaf, paws tucked under and tail wrapped round; wake lifts the head and opens the eyes, out rolls
-	it onto its side, legs stiff, knocked out."""
-	x, y, facing, coat, wrap, quirk = kitten
-	rest(arm)
-	root = arm.pose.bones["root"]
-	roll = math.radians(90 * out) * wrap
-	root.rotation_euler = (0, roll, 0)
-	centre = 0.5
-	low = -0.24 * (1 - out)
-	root.location = (-centre * math.sin(roll), 0, low + (centre - 0.2) * out - centre * (1 - math.cos(roll)))
-	root.scale = (1 + 0.02 * breath, 1, 1 + 0.04 * breath)
-	tuck = 1 - out
-	stiff = out
-	for side in ("L", "R"):
-		_set(arm, f"front_upper.{side}", -75 * tuck + 25 * stiff)
-		_set(arm, f"front_lower.{side}", 120 * tuck + 10 * stiff)
-		_set(arm, f"front_paw.{side}", -40 * tuck + 15 * stiff)
-		_set(arm, f"thigh.{side}", 55 * tuck - 25 * stiff)
-		_set(arm, f"shin.{side}", 50 * tuck - 10 * stiff)
-		_set(arm, f"hock.{side}", -110 * tuck + 20 * stiff)
-	_set(arm, "neck", -8 * (1 - wake) + 12 * wake - 10 * out, 0, (12 + 10 * quirk) * wrap * (1 - wake))
-	_set(arm, "head", 14 * (1 - wake) - 8 * wake, 0, 0)
-	arm.pose.bones["head"].rotation_euler.y = math.radians(8 * wrap * (1 - wake))
-	flick = 15 * breath * (1 if quirk > 0.5 else 0)
-	_aim_tail(arm, [0] * TAIL_BONES, [0] * TAIL_BONES, [(-25, 25 * wrap), (-8, 70 * wrap), (0, 110 * wrap),
-		(2, 145 * wrap), (6 + flick, 175 * wrap)], 1.0 - 0.6 * out)
-
-
 scene.reset()
 sc, ground = scene.setup(WIDTH, HEIGHT, samples=64)
 bed_objects = bed()
 kittens = []
-for i in range(4):
+for i in range(KITTENS):
 	cat = cat_module.build(style)
 	armature = rig.build(cat.body, [cat.nose, *cat.eyes])
 	holder = bpy.data.objects.new(f"Kitten{i}", None)
@@ -247,22 +226,22 @@ for variation in range(4):
 	layout = arrangement(variation)
 	colour_bed(bed_objects, variation)
 	for (cat, armature, holder), kitten in zip(kittens, layout):
-		holder.location = (kitten[0], kitten[1], 0.1 if family == "biter" else 0.2)
+		# resting on the cushion or the blanket
+		holder.location = (kitten[0], kitten[1], 0.15 if family == "biter" else 0.22)
 		holder.rotation_euler = (0, 0, math.radians(kitten[2]))
 	for name, frames in (("idle", IDLE_FRAMES), ("die", DIE_FRAMES)):
 		colours, shadows = [], []
 		for f in range(frames):
 			t = f / (frames - 1)
 			for (cat, armature, holder), kitten in zip(kittens, layout):
+				wrap, quirk = kitten[4], kitten[5]
 				if name == "idle":
 					# breathing out of step with each other; the ping-pong playback makes it loop
-					breath = 0.5 - 0.5 * math.cos(math.pi * (t + kitten[5]))
-					loaf(armature, kitten, breath)
+					breath = 0.5 - 0.5 * math.cos(math.pi * (t + quirk))
+					anim.sleep(armature, breath, wrap=wrap, quirk=quirk)
 					cat.set_eyes("closed")
 				else:
-					wake = _bump(t, 0.05, 0.45)
-					out = _ease(t, 0.35, 0.75)
-					loaf(armature, kitten, 0.0, wake=max(wake, out), out=out)
+					anim.sleep(armature, 0, wake=_bump(t, 0.05, 0.45), out=_ease(t, 0.35, 0.75), wrap=wrap, quirk=quirk)
 					cat.set_eyes("closed" if t < 0.08 else "open" if t < 0.5 else "x")
 			colour, shadow = frame(layout)
 			colours.append(colour)

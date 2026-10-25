@@ -414,6 +414,38 @@ def box_die(arm, phase, cat=None, direction=0):
 	cat.knock_out(phase >= 0.45)
 
 
+def sleep(arm, breath, wake=0.0, out=0.0, wrap=1, quirk=0.0):
+	"""The nests' kittens: asleep as a loaf, paws tucked under, head down and turned, tail wrapped round its side;
+	breath swells it a little. wake lifts the head; out rolls it onto its side towards wrap, legs stiff, knocked out,
+	resting where the knocked-out cats do."""
+	rest(arm)
+	root = arm.pose.bones["root"]
+	angle = math.radians(90 * out) * wrap
+	centre = 0.55
+	height = centre - 0.15 * out - 0.27 * (1 - out)
+	root.location = (-centre * math.sin(angle) - 0.1 * out * wrap, 0, height - centre * math.cos(angle))
+	root.rotation_euler = (0, angle, 0)
+	root.scale = (1 + 0.02 * breath, 1, 1 + 0.04 * breath)
+	tuck = 1 - out
+	for side in ("L", "R"):
+		_set(arm, f"front_upper.{side}", -70 * tuck + 25 * out)
+		_set(arm, f"front_lower.{side}", 110 * tuck + 10 * out)
+		_set(arm, f"front_paw.{side}", -35 * tuck + 15 * out)
+		_set(arm, f"thigh.{side}", 50 * tuck - 25 * out)
+		_set(arm, f"shin.{side}", 45 * tuck - 10 * out)
+		_set(arm, f"hock.{side}", -100 * tuck + 20 * out)
+	lift = max(wake, out)
+	_set(arm, "neck", -12 * (1 - lift) + 10 * wake - 10 * out, 0, (14 + 10 * quirk) * wrap * (1 - lift) + 21 * wrap * out)
+	_set(arm, "head", 16 * (1 - lift) - 6 * wake - 10 * out, 0, 8 * wrap * out)
+	arm.pose.bones["head"].rotation_euler.y = math.radians(10 * wrap * (1 - lift))
+	flick = 15 * breath * (1 if quirk > 0.5 else 0)
+	# wrapped round its side asleep; knocked out it lies limp behind, as the knocked-out cats' does
+	asleep = [(-25, 25 * wrap), (-8, 70 * wrap), (0, 110 * wrap), (2, 145 * wrap), (6 + flick, 175 * wrap)]
+	limp = [(-45, 4 * -wrap), (-38, 14 * -wrap), (0, 34 * -wrap), (1, 60 * -wrap), (3, 88 * -wrap)]
+	_aim_tail(arm, [0] * TAIL_BONES, [0] * TAIL_BONES, [(a[0] + (b[0] - a[0]) * out, a[1] + (b[1] - a[1]) * out)
+		for a, b in zip(asleep, limp)], 1.0)
+
+
 ANIMATIONS = {
 	"stand": {"frames": 1, "pose": lambda arm, phase, cat=None, direction=0: rest(arm)},
 	"run": {"frames": 16, "pose": run},
@@ -427,6 +459,12 @@ ANIMATIONS = {
 	"box_alternative": {"frames": 17, "pose": box_alternative, "directions": 1},
 	"box_attack": {"frames": 10, "pose": box_attack, "once": True},
 	"box_die": {"frames": 24, "pose": box_die, "directions": 1, "once": True},
+	"sleep": {"frames": 7, "directions": 1, "once": True,
+		"pose": lambda arm, phase, cat=None, direction=0: (sleep(arm, phase), cat and cat.set_eyes("closed"))},
+	"sleep_die": {"frames": 18, "directions": 1, "once": True,
+		"pose": lambda arm, phase, cat=None, direction=0: (sleep(arm, 0, wake=_bump(phase, 0.05, 0.45),
+			out=_ease(phase, 0.35, 0.75)), cat and cat.set_eyes("closed" if phase < 0.08 else "open" if phase < 0.5
+			else "x"))},
 }
 
 
@@ -434,10 +472,14 @@ def phase(spec, frame):
 	"""A cycle's frames divide it evenly; an animation played once ends on its last pose."""
 	return frame / (spec["frames"] - 1) if spec.get("once") else frame / spec["frames"]
 
-# what each family renders for its run, attack and death
+# what each family renders for its run, attack and death (or the worms' box animations), and the pattern sets its
+# coats use (variants.lua and worms.lua), the only masks it needs
 FAMILIES = {
-	"biter": {"style": "shorthair", "run": "run", "attack": "attack", "die": "die"},
-	"spitter": {"style": "longhair", "run": "trot", "attack": "spit", "die": "die"},
-	"worm": {"style": "shorthair", "box": True, "folded": "box_folded", "preparing": "box_preparing",
+	"biter": {"style": "shorthair", "patterns": ("tabby", "tabby-white", "patches", "patches-white"), "run": "run",
+		"attack": "attack", "die": "die"},
+	"spitter": {"style": "longhair", "patterns": ("tabby", "patches", "points"), "run": "trot", "attack": "spit",
+		"die": "die"},
+	"worm": {"style": "shorthair", "patterns": ("tabby", "tabby-white", "patches-white"), "box": True,
+		"folded": "box_folded", "preparing": "box_preparing",
 		"prepared": "box_prepared", "prepared-alternative": "box_alternative", "attack": "box_attack", "die": "box_die"},
 }
