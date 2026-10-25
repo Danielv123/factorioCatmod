@@ -57,6 +57,50 @@ def _aim_tail(arm, elevations, swings):
 		parent = unposed @ local.to_matrix().to_4x4()
 
 
+# The tail through one stride of Muybridge's galloping cat (plate 720, frames 13-23, traced from the photographs):
+# each row the elevations, degrees above straight back, of five equal lengths of tail from base to tip, at its phase
+# (0 is the gathered frame 19, which matches frame 7). A wave runs down the tail: the base rises as the cat pushes off
+# while the tip hangs in a hook, then the base drops and the tip flicks up.
+PLATE_720_TAIL = [
+	(0.000, (9, -15, -27, -13, -10)),
+	(0.083, (21, 3, -22, -39, -34)),
+	(0.167, (25, 12, -4, -36, -61)),
+	(0.250, (27, 23, 5, -14, -61)),
+	(0.333, (41, 25, 15, -2, -29)),
+	(0.500, (34, 31, 27, 27, 29)),
+	(0.583, (33, 32, 32, 30, 7)),
+	(0.667, (19, 20, 25, 36, 20)),
+	(0.750, (6, 3, 10, 30, 43)),
+	(0.833, (2, -11, -3, 11, 36)),
+	(0.917, (10, -10, -20, -12, -6)),
+]
+
+
+def _plate_tail(phase):
+	"""The traced tail elevations at any phase, by a smooth cyclic (Catmull-Rom) curve through the photographs."""
+	phase %= 1
+	keys = PLATE_720_TAIL
+	n = len(keys)
+	i = max(k for k in range(n) if keys[k][0] <= phase)
+	p0, p1, p2, p3 = (keys[(i + k) % n] for k in (-1, 0, 1, 2))
+	t0, t1, t2, t3 = p0[0], p1[0], p2[0], p3[0]
+	# unwrap the phases around the cycle's end
+	if t0 > t1:
+		t0 -= 1
+	if t2 <= t1:
+		t2 += 1
+	if t3 <= t2:
+		t3 += 1
+	t = (phase - t1) / (t2 - t1)
+	out = []
+	for a0, a1, a2, a3 in zip(p0[1], p1[1], p2[1], p3[1]):
+		m1 = (a2 - a0) / (t2 - t0) * (t2 - t1)
+		m2 = (a3 - a1) / (t3 - t1) * (t2 - t1)
+		out.append((2 * t ** 3 - 3 * t ** 2 + 1) * a1 + (t ** 3 - 2 * t ** 2 + t) * m1
+			+ (-2 * t ** 3 + 3 * t ** 2) * a2 + (t ** 3 - t ** 2) * m2)
+	return out
+
+
 def _front_leg(arm, side, p):
 	"""On the ground from 0.55 to 0.85, sweeping back with the paw flat; then folded up under the chest through the
 	gathered flight, and reaching far forward through the stretched one."""
@@ -103,8 +147,7 @@ def run(arm, phase, cat=None, direction=0):
 	"""A rotary gallop after Muybridge's galloping cat (Animal Locomotion, plate 720). At 0 the cat is gathered: the
 	spine arched, hind paws landing under the belly, front paws tucked. The hind legs push it into a stretched flight
 	(about 0.47), the front paws land and push it into a short gathered flight while the hind legs swing forward. The
-	head stays level, and the tail trails behind, rising as the body stretches and dropping as it gathers, the tip
-	lagging the base."""
+	head stays level. The tail moves as the photographed cat's did, swaying from side to side as well."""
 	rest(arm)
 	_hind_leg(arm, "L", phase)
 	_hind_leg(arm, "R", phase - 0.05)
@@ -117,17 +160,17 @@ def run(arm, phase, cat=None, direction=0):
 	# squashed when gathered, stretched long in the air (the head keeps its shape, see rig.py)
 	root.scale = (1 + 0.02 * flex, 1 - 0.08 * flex, 1 + 0.06 * flex)
 	_set(arm, "root", pitch)
-	# arched hard when gathered, only a little hollow when stretched
-	hips = 20 * flex if flex > 0 else 7 * flex
-	chest = -18 * flex if flex > 0 else -6 * flex
+	# arched hard when gathered, only a little hollow when stretched; the chest bends twice as far as the hips, the other
+	# way, so the back bows while the line from rump to shoulders stays level
+	hips = 14 * flex if flex > 0 else 5 * flex
+	chest = -2 * hips
 	_set(arm, "hips", hips)
 	_set(arm, "chest", chest)
 	# the neck takes up most of the pitch the chest ends at (root, hips and chest), keeping the head level
 	_set(arm, "neck", -0.8 * (pitch + hips + chest))
 	_set(arm, "head", -0.3 * pitch + 2 * math.sin(TAU * phase))
-	curl = (0, 2, 6, 12, 20)
-	_aim_tail(arm, [22 + 18 * math.cos(TAU * (phase - 0.47 - 0.07 * i)) + curl[i] for i in range(TAIL_BONES)],
-		[4 * math.sin(TAU * (phase - 0.1 * i)) for i in range(TAIL_BONES)])
+	# the sway grows down the tail and lags behind the base, like the rise and fall does
+	_aim_tail(arm, _plate_tail(phase), [(5 + 4 * i) * math.sin(TAU * (phase - 0.12 * i)) for i in range(TAIL_BONES)])
 
 
 def attack(arm, phase, cat=None, direction=0):
