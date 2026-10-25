@@ -52,15 +52,15 @@ PATTERNS = {
 	"patches-white": {"marks": "patches", "white": "high"},
 	"points": {"marks": "points", "white": "none"},
 }
-IRIS = ((0.45, 0.75, 0.15), (0.95, 0.75, 0.2))
+IRIS = ((0.36, 0.56, 0.14), (0.74, 0.58, 0.18))
 
 # Fur styles: lengths are multiples of the short coat's; the rest shape each strand (how far it rises off the skin, how
 # hard the tips clump, how much they wander) and how many there are per square tile.
 STYLES = {
-	"shorthair": {"body": 1.0, "face": 1.0, "ruff": 1.0, "tail": 1.0, "legs": 1.0, "lift": 0.32, "clump": 0.75,
-		"frizz": 0.4, "density": 60000, "radius": 0.0026},
-	"longhair": {"body": 1.9, "face": 1.25, "ruff": 2.0, "tail": 2.3, "legs": 1.6, "lift": 0.5, "clump": 0.85,
-		"frizz": 0.75, "density": 48000, "radius": 0.003},
+	"shorthair": {"body": 1.0, "face": 1.0, "ruff": 1.0, "tail": 1.0, "legs": 1.0, "lift": 0.34, "clump": 0.85,
+		"frizz": 0.6, "density": 60000, "radius": 0.0026},
+	"longhair": {"body": 1.9, "face": 1.25, "ruff": 2.0, "tail": 2.3, "legs": 1.6, "lift": 0.5, "clump": 0.92,
+		"frizz": 0.95, "density": 48000, "radius": 0.003},
 }
 
 
@@ -330,7 +330,7 @@ def _fur(body, fur_material, style):
 	n = t.vmath("NORMALIZE", t.out(distribute, "Normal"))
 	comb = sample(named("comb"))
 	comb = t.vmath("NORMALIZE", t.vmath("SUBTRACT", comb, t.vmath("SCALE", n, scale=t.vmath("DOT_PRODUCT", comb, n))))
-	random = t.out(t.node("FunctionNodeRandomValue", {"Min": 0.75, "Max": 1.2, "Seed": 3}, data_type="FLOAT"), 0)
+	random = t.out(t.node("FunctionNodeRandomValue", {"Min": 0.65, "Max": 1.35, "Seed": 3}, data_type="FLOAT"), 0)
 	length = t.math("MULTIPLY", sample(named("fur_len", "FLOAT"), "FLOAT"), random)
 	points = store(points, "root", position)
 	points = store(points, "n", n)
@@ -436,13 +436,36 @@ def _marks(t, p, kind):
 	return t.map_range(t.out(noise, "Fac"), 0.5, 0.56)
 
 
+# grimy, dusty brown-grey, what a cat picks up living in a factory
+DIRT = (0.3, 0.26, 0.21, 1)
+
+
+def _dirt(t, p, speckle=True):
+	"""Shader nodes for how dirty a cat is at rest position p: dust worked into the paws, legs and belly from the
+	ground, uneven grimy patches over the body, a strand-to-strand speckle; the face, which it washes, cleanest."""
+	sep = t.node("ShaderNodeSeparateXYZ", {"Vector": p})
+	z = t.out(sep, "Z")
+	ground = t.math("MULTIPLY", t.map_range(z, 0.42, 0.04), 0.6)
+	patches = t.node("ShaderNodeTexNoise", {"Vector": p, "Scale": 3.2, "Detail": 4.0, "Roughness": 0.6})
+	patch = t.math("MULTIPLY", t.map_range(t.out(patches, "Fac"), 0.44, 0.66), 0.6)
+	dirt = t.math("ADD", ground, patch)
+	if speckle:
+		grains = t.node("ShaderNodeTexNoise", {"Vector": p, "Scale": 70.0, "Detail": 1.0})
+		dirt = t.math("ADD", dirt, t.math("MULTIPLY", t.map_range(t.out(grains, "Fac"), 0.45, 0.7), 0.3))
+	face = t.map_range(t.vmath("DISTANCE", p, tuple(MUZZLE)), 0.32, 0.18)
+	return t.math("MINIMUM", 0.85, t.math("MULTIPLY", dirt, t.math("SUBTRACT", 1.0, t.math("MULTIPLY", face, 0.6))))
+
+
 def _fur_material():
 	material = bpy.data.materials.new("CatFur")
 	material.use_nodes = True
 	t = _Tree(material.node_tree)
 	t.nodes.clear()
-	hair = t.node("ShaderNodeBsdfHairPrincipled", {"Color": (0.92, 0.9, 0.87, 1), "Roughness": 0.4,
-		"Radial Roughness": 0.7, "Coat": 0.08, "Random Roughness": 0.2}, parametrization="COLOR")
+	p = t.out(t.node("ShaderNodeAttribute", attribute_name="root_rest", attribute_type="GEOMETRY"), "Vector")
+	# the white base the coat colours multiply, so the dirt carries into every coat
+	colour = t.node("ShaderNodeMix", {"A": (0.86, 0.84, 0.8, 1), "B": DIRT, "Factor": _dirt(t, p)}, data_type="RGBA")
+	hair = t.node("ShaderNodeBsdfHairPrincipled", {"Color": t.out(colour, "Result"), "Roughness": 0.55,
+		"Radial Roughness": 0.85, "Coat": 0.0, "Random Roughness": 0.3}, parametrization="COLOR")
 	t.links.new(t.out(hair, 0), t.node("ShaderNodeOutputMaterial").inputs["Surface"])
 	return material
 
@@ -452,11 +475,14 @@ def _skin_material():
 	material.use_nodes = True
 	t = _Tree(material.node_tree)
 	pink = t.out(t.node("ShaderNodeAttribute", attribute_name="pink", attribute_type="GEOMETRY"), "Fac")
-	base = t.node("ShaderNodeMix", {"A": (0.85, 0.83, 0.8, 1), "B": (0.95, 0.55, 0.55, 1), "Factor": pink},
+	p = t.out(t.node("ShaderNodeAttribute", attribute_name="rest_position", attribute_type="GEOMETRY"), "Vector")
+	base = t.node("ShaderNodeMix", {"A": (0.8, 0.78, 0.74, 1), "B": (0.8, 0.5, 0.5, 1), "Factor": pink},
+		data_type="RGBA")
+	base = t.node("ShaderNodeMix", {"A": t.out(base, "Result"), "B": DIRT, "Factor": _dirt(t, p, speckle=False)},
 		data_type="RGBA")
 	bsdf = t.nodes["Principled BSDF"]
 	t.links.new(t.out(base, "Result"), _sock(bsdf.inputs, "Base Color"))
-	bsdf.inputs["Roughness"].default_value = 0.7
+	bsdf.inputs["Roughness"].default_value = 0.85
 	_sock(bsdf.inputs, "Subsurface Weight").default_value = 0.15
 	return material
 
@@ -502,8 +528,8 @@ def _eye_material():
 		element.color = (*color, 1)
 	t.links.new(t.out(ring, "Color"), _sock(bsdf.inputs, "Base Color"))
 	bsdf.inputs["Roughness"].default_value = 0.4
-	_sock(bsdf.inputs, "Coat Weight").default_value = 1.0
-	_sock(bsdf.inputs, "Coat Roughness").default_value = 0.02
+	_sock(bsdf.inputs, "Coat Weight").default_value = 0.6
+	_sock(bsdf.inputs, "Coat Roughness").default_value = 0.1
 	return material
 
 

@@ -27,6 +27,14 @@ COATS = {
 	"blue": ("tabby", (0.5, 0.54, 0.62), (0.44, 0.48, 0.56)),
 }
 
+
+
+def grubby(colour):
+	"""As data.lua dulls a coat's colours: a quarter of the way to grey, and a little darker."""
+	grey = sum(colour) / 3
+	return tuple((c * 0.75 + grey * 0.25) * 0.9 for c in colour)
+
+
 args = sys.argv[sys.argv.index("--") + 1:]
 out_dir, animation = args[0], args[1]
 direction = int(args[2]) if len(args) > 2 else 4
@@ -59,6 +67,7 @@ for frame in range(spec["frames"]):
 	layers = scene.render_layers(sc, ground, cat, [pattern], tmp)
 	colour, shade, mask = layers["colour"], layers["shadow"], layers[pattern]
 	# the masks multiply the white cat by their tint where they cover it, and don't overlap
+	coat_tint, marks_tint = grubby(coat_tint), grubby(marks_tint)
 	rgb = colour[..., :3]
 	marks = mask[..., 1]
 	for value, tint in ((np.clip(mask[..., 0] - marks, 0, 1), coat_tint), (marks, marks_tint)):

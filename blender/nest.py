@@ -14,6 +14,7 @@ import numpy as np
 HERE = os.path.dirname(__file__)
 sys.path.insert(0, HERE)
 import anim  # noqa: E402
+import bed as bed_module  # noqa: E402
 import cat as cat_module  # noqa: E402
 import rig  # noqa: E402
 import scene  # noqa: E402
@@ -44,6 +45,12 @@ BEDS = {
 }[family]
 
 
+def grubby(colour):
+	"""As data.lua dulls a coat's colours: a quarter of the way to grey, and a little darker."""
+	grey = sum(colour) / 3
+	return tuple((c * 0.75 + grey * 0.25) * 0.9 for c in colour)
+
+
 def arrangement(variation):
 	"""Three kittens curled nose to tail in a ring round the bed's middle."""
 	random.seed(17 + variation * 31)
@@ -60,109 +67,10 @@ def arrangement(variation):
 	return kittens
 
 
-def fabric(name, colour, plaid=False):
-	material = bpy.data.materials.new(name)
-	material.use_nodes = True
-	t = cat_module._Tree(material.node_tree)
-	bsdf = t.nodes["Principled BSDF"]
-	p = t.out(t.node("ShaderNodeTexCoord"), "Object")
-	fuzz = t.node("ShaderNodeTexNoise", {"Vector": p, "Scale": 60.0, "Detail": 3.0})
-	shade = t.math("MULTIPLY_ADD", t.out(fuzz, "Fac"), 0.25, 0.85)
-	base = t.node("ShaderNodeMix", {"A": (0, 0, 0, 1), "B": (*colour, 1), "Factor": shade}, data_type="RGBA")
-	result = t.out(base, "Result")
-	if plaid:
-		sep = t.node("ShaderNodeSeparateXYZ", {"Vector": p})
-		bands = t.math("ADD", t.math("GREATER_THAN", t.math("SINE", t.math("MULTIPLY", t.out(sep, "X"), 14.0)), 0.55),
-			t.math("GREATER_THAN", t.math("SINE", t.math("MULTIPLY", t.out(sep, "Y"), 14.0)), 0.55))
-		result = t.out(t.node("ShaderNodeMix", {"A": result, "B": (0.95, 0.92, 0.85, 1),
-			"Factor": t.math("MULTIPLY", bands, 0.45)}, data_type="RGBA"), "Result")
-	t.links.new(result, cat_module._sock(bsdf.inputs, "Base Color"))
-	bsdf.inputs["Roughness"].default_value = 0.95
-	cat_module._sock(bsdf.inputs, "Sheen Weight").default_value = 0.8
-	return material
-
-
-def wicker():
-	material = bpy.data.materials.new("Wicker")
-	material.use_nodes = True
-	t = cat_module._Tree(material.node_tree)
-	bsdf = t.nodes["Principled BSDF"]
-	p = t.out(t.node("ShaderNodeTexCoord"), "Object")
-	sep = t.node("ShaderNodeSeparateXYZ", {"Vector": p})
-	angle = t.math("ARCTAN2", t.out(sep, "Y"), t.out(sep, "X"))
-	# a basket weave: strands going round, crossing upright stakes over and under
-	rounds = t.math("SINE", t.math("MULTIPLY", t.out(sep, "Z"), 60.0))
-	stakes = t.math("SINE", t.math("MULTIPLY", angle, 24.0))
-	weave = t.math("MULTIPLY_ADD", t.math("MULTIPLY", rounds, t.math("SIGN", stakes)), 0.5, 0.5)
-	colour = t.node("ShaderNodeMix", {"A": (0.32, 0.2, 0.09, 1), "B": (0.72, 0.52, 0.28, 1), "Factor": weave},
-		data_type="RGBA")
-	t.links.new(t.out(colour, "Result"), cat_module._sock(bsdf.inputs, "Base Color"))
-	bsdf.inputs["Roughness"].default_value = 0.7
-	bump = t.node("ShaderNodeBump", {"Height": weave, "Strength": 0.6})
-	t.links.new(t.out(bump, "Normal"), cat_module._sock(bsdf.inputs, "Normal"))
-	return material
-
-
-def bed():
-	"""A round plush bed: a soft bolster around a cushion; or a round wicker basket with a blanket in it."""
-	objects = []
-	if family == "biter":
-		bpy.ops.mesh.primitive_torus_add(major_radius=1.25, minor_radius=0.36, major_segments=64, minor_segments=24)
-		rim = bpy.context.object
-		rim.scale = (1, 1, 0.75)
-		rim.location.z = 0.27
-		bpy.ops.object.shade_smooth()
-		bpy.ops.mesh.primitive_cylinder_add(vertices=64, radius=1.05, depth=0.14, location=(0, 0, 0.08))
-		cushion = bpy.context.object
-		cushion.modifiers.new("Round", "BEVEL").width = 0.05
-		bpy.ops.object.shade_smooth()
-		objects = [rim, cushion]
-	else:
-		bpy.ops.mesh.primitive_cylinder_add(vertices=64, radius=1.4, depth=0.55, location=(0, 0, 0.275))
-		wall = bpy.context.object
-		bpy.ops.object.mode_set(mode="EDIT")
-		bpy.ops.mesh.select_all(action="DESELECT")
-		bpy.ops.object.mode_set(mode="OBJECT")
-		for polygon in wall.data.polygons:
-			polygon.select = polygon.normal.z > 0.9
-		bpy.ops.object.mode_set(mode="EDIT")
-		bpy.ops.mesh.delete(type="FACE")
-		bpy.ops.object.mode_set(mode="OBJECT")
-		wall.modifiers.new("Wall", "SOLIDIFY").thickness = 0.06
-		bpy.ops.object.shade_smooth()
-		bpy.ops.mesh.primitive_torus_add(major_radius=1.4, minor_radius=0.07, major_segments=64, minor_segments=12,
-			location=(0, 0, 0.55))
-		rim = bpy.context.object
-		bpy.ops.object.shade_smooth()
-		bpy.ops.mesh.primitive_cylinder_add(vertices=64, radius=1.3, depth=0.2, location=(0, 0, 0.12))
-		blanket = bpy.context.object
-		blanket.modifiers.new("Round", "BEVEL").width = 0.08
-		bpy.ops.object.shade_smooth()
-		objects = [wall, rim, blanket]
-	return objects
-
-
-def colour_bed(objects, variation):
-	if family == "biter":
-		rim, cushion = objects
-		material = fabric("Bed", BEDS[variation])
-		for obj in objects:
-			obj.data.materials.clear()
-			obj.data.materials.append(material)
-		cushion.data.materials[0] = fabric("Cushion", tuple(min(1, c * 1.15 + 0.08) for c in BEDS[variation]))
-	else:
-		wall, rim, blanket = objects
-		weave = wicker()
-		for obj in (wall, rim):
-			obj.data.materials.clear()
-			obj.data.materials.append(weave)
-		blanket.data.materials.clear()
-		blanket.data.materials.append(fabric("Blanket", BEDS[variation], plaid=True))
-
-
 scene.reset()
 sc, ground = scene.setup(WIDTH, HEIGHT, samples=64)
-bed_objects = bed()
+bed = bed_module.Bed("plush" if family == "biter" else "basket")
+bed_objects = bed.parts
 kittens = []
 for i in range(KITTENS):
 	cat = cat_module.build(style)
@@ -204,6 +112,7 @@ def frame(layout):
 	rgb = colour[..., :3].copy()
 	for (cat, _, _), kitten in zip(kittens, layout):
 		pattern, coat, marks = COATS[kitten[3]]
+		coat, marks = grubby(coat), grubby(marks)
 		for other, _, _ in kittens:
 			if other is cat:
 				other.look(pattern)
@@ -224,7 +133,7 @@ def frame(layout):
 out_dir = os.path.join(HERE, "..", "graphics", "cat", family + "-nest")
 for variation in range(4):
 	layout = arrangement(variation)
-	colour_bed(bed_objects, variation)
+	bed.colour(variation, BEDS[variation])
 	for (cat, armature, holder), kitten in zip(kittens, layout):
 		# resting on the cushion or the blanket
 		holder.location = (kitten[0], kitten[1], 0.15 if family == "biter" else 0.22)
@@ -235,6 +144,7 @@ for variation in range(4):
 			t = f / (frames - 1)
 			for (cat, armature, holder), kitten in zip(kittens, layout):
 				wrap, quirk = kitten[4], kitten[5]
+				bed.burst(0.0 if name == "idle" else _ease(t, 0.05, 0.4))
 				if name == "idle":
 					# breathing out of step with each other; the ping-pong playback makes it loop
 					breath = 0.5 - 0.5 * math.cos(math.pi * (t + quirk))

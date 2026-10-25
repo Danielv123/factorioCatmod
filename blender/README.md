@@ -38,6 +38,7 @@ animation.
   and the mask looks.
 - `rig.py` is its skeleton, and `anim.py` the poses of each animation. The gallop's tail is traced from Muybridge's
   photographs of a galloping cat (Animal Locomotion, plate 720).
-- `box.py` is the worms' cardboard box; `nest.py` builds the beds and baskets and renders the kittens in them.
+- `box.py` is the worms' cardboard box, which bursts open when its cat is knocked out; `bed.py` the nests' beds and
+  baskets, which break apart; `nest.py` renders the kittens in them.
 - `scene.py` sets up the camera, light and passes to match Factorio's sprites.
 - `sheet.py` packs frames into sheets.

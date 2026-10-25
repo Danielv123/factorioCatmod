@@ -394,13 +394,18 @@ def box_attack(arm, phase, cat=None, direction=0):
 
 
 def box_die(arm, phase, cat=None, direction=0):
-	"""Pops up in surprise, then flops forward over the front of the box, knocked out with X eyes, paws dangling, as
-	the flaps sag; the corpse keeps the last frame."""
+	"""Pops up in surprise, bursting the box: the walls fall open, the front flat on the ground, and the cat flops
+	forward onto it, knocked out with X eyes, paws out in front; the corpse keeps the last frame."""
 	rest(arm)
 	pop = _bump(phase, 0.0, 0.3)
+	burst = _ease(phase, 0.12, 0.55)
 	flop = _ease(phase, 0.25, 0.65)
 	settle = _bump(phase, 0.65, 0.85)
-	_sit(arm, emerge=1.0 + 0.15 * pop, lean=95 * flop - 6 * settle, nod=25 * flop)
+	_sit(arm, emerge=1.0 + 0.15 * pop, lean=100 * flop - 6 * settle, nod=20 * flop)
+	# with the front wall gone it slumps down and forward onto it
+	root = arm.pose.bones["root"]
+	root.location.y += 0.2 * flop
+	root.location.z -= 0.3 * flop
 	for side in ("L", "R"):
 		_set(arm, f"front_upper.{side}", (70 - 0.5 * SIT_PITCH) * (1 - flop) - 20 * flop)
 		_set(arm, f"front_lower.{side}", -35 * (1 - flop) + 10 * flop)
@@ -411,7 +416,8 @@ def box_die(arm, phase, cat=None, direction=0):
 	draped = [(55, 0), (25, 6), (-25, 10), (-60, 12), (-75, 12)]
 	_aim_tail(arm, [0] * TAIL_BONES, [0] * TAIL_BONES, [(a[0] + (b[0] - a[0]) * limp, a[1] + (b[1] - a[1]) * limp)
 		for a, b in zip(upright, draped)], 1.0)
-	cat.box.open(1.0 - 0.35 * flop)
+	cat.box.open(1.0)
+	cat.box.burst(burst)
 	cat.knock_out(phase >= 0.45)
 
 

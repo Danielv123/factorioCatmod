@@ -10,6 +10,13 @@ local function graphics(family)
 	return "__catmod__/graphics/cat/" .. family .. "/"
 end
 
+-- a coat's colours dulled for a grimy factory world: a quarter of the way to grey, and a little darker
+local function grubby(colour)
+	local grey = (colour[1] + colour[2] + colour[3]) / 3
+	return {(colour[1] * 0.75 + grey * 0.25) * 0.9, (colour[2] * 0.75 + grey * 0.25) * 0.9,
+		(colour[3] * 0.75 + grey * 0.25) * 0.9}
+end
+
 -- the white cat, the coat and markings masks multiplying it by their colours, and the shadow
 local function cat_animation(family, name, scale, variant, options)
 	local function layer(file, extra)
@@ -25,8 +32,10 @@ local function cat_animation(family, name, scale, variant, options)
 	return {
 		layers = {
 			layer(name),
-			layer(name .. "-coat-" .. variant.pattern, {blend_mode = "multiplicative-with-alpha", tint = variant.coat}),
-			layer(name .. "-marks-" .. variant.pattern, {blend_mode = "multiplicative-with-alpha", tint = variant.marks}),
+			layer(name .. "-coat-" .. variant.pattern, {blend_mode = "multiplicative-with-alpha",
+				tint = grubby(variant.coat)}),
+			layer(name .. "-marks-" .. variant.pattern, {blend_mode = "multiplicative-with-alpha",
+				tint = grubby(variant.marks)}),
 			layer(name .. "-shadow", {draw_as_shadow = true}),
 		},
 	}
@@ -96,8 +105,8 @@ local function cat_icons(family, variant)
 	local folder = "__catmod__/graphics/cat/icons/" .. family
 	return {
 		{icon = folder .. ".png", icon_size = 64},
-		{icon = folder .. "-coat-" .. variant.pattern .. ".png", icon_size = 64, tint = variant.coat},
-		{icon = folder .. "-marks-" .. variant.pattern .. ".png", icon_size = 64, tint = variant.marks},
+		{icon = folder .. "-coat-" .. variant.pattern .. ".png", icon_size = 64, tint = grubby(variant.coat)},
+		{icon = folder .. "-marks-" .. variant.pattern .. ".png", icon_size = 64, tint = grubby(variant.marks)},
 	}
 end
 

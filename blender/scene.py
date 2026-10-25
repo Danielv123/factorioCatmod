@@ -39,7 +39,7 @@ def setup(width, height, samples=64):
 	scene.render.image_settings.color_depth = "8"
 	scene.view_settings.view_transform = "Standard"
 	scene.view_settings.look = "Medium High Contrast"
-	scene.view_settings.exposure = -0.1
+	scene.view_settings.exposure = -0.4
 
 	camera = bpy.data.objects.new("Camera", bpy.data.cameras.new("Camera"))
 	camera.data.type = "ORTHO"
@@ -94,7 +94,7 @@ def catchlight(eyes):
 	for eye in eyes:
 		collection.objects.link(eye)
 	light = bpy.data.objects.new("Catchlight", bpy.data.lights.new("Catchlight", "SUN"))
-	light.data.energy = 6.0
+	light.data.energy = 3.0
 	light.data.angle = math.radians(6)
 	travel = Vector((0.35, 0.65, -0.75)).normalized()
 	light.rotation_euler = (-travel).to_track_quat("Z", "Y").to_euler()
