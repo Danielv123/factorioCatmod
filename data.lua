@@ -20,7 +20,9 @@ end
 -- the white cat, the coat and markings masks multiplying it by their colours, and the shadow
 local function cat_animation(family, name, scale, variant, options)
 	local function layer(file, extra)
-		local parameters = {scale = scale * 0.5, multiply_shift = scale, usage = "enemy"}
+		-- allow_forced_downscale: on a lower sprite resolution setting the game loads them at half size, as it
+		-- does vanilla's enemies
+		local parameters = {scale = scale * 0.5, multiply_shift = scale, usage = "enemy", allow_forced_downscale = true}
 		for key, value in pairs(options) do
 			parameters[key] = value
 		end
@@ -105,7 +107,7 @@ data:extend({{
 	render_layer_when_on_ground = "corpse",
 	movement_modifier_when_on_ground = 0,
 	pictures = {sheet = {filename = "__catmod__/graphics/cat/tuft/tuft-1.png", width = tuft.width, height = tuft.height,
-		variation_count = 4, line_length = 4, scale = 0.35}},
+		variation_count = 4, line_length = 4, scale = 0.35, allow_forced_downscale = true}},
 }})
 
 -- a puff of tufts in a coat's colour, where purple biter blood would have been
@@ -212,6 +214,22 @@ for _, tier in pairs(tiers) do
 	end
 end
 
+-- The vanilla biter and spitter corpses are left unused by the cats' own, so their sprites are blanked rather than
+-- loaded (about 30 MB of video memory); the prototypes stay, for mods that use them by name.
+if replace then
+	for _, tier in pairs(tiers) do
+		local corpse = data.raw["corpse"][tier.unit .. "-corpse"]
+		if corpse then
+			corpse.animation = util.empty_animation(1)
+			corpse.decay_animation = nil
+			corpse.use_decay_layer = false
+			corpse.direction_shuffle = nil
+			corpse.ground_patch = nil
+			corpse.ground_patch_decay = nil
+		end
+	end
+end
+
 -- The worms become cats in cardboard boxes: hidden in the closed box with the ears poking out, popping up when
 -- something comes near, sat looking about, and leaning out over the rim to hack up hairballs. The box doesn't turn;
 -- the cat turns inside it.
@@ -274,7 +292,8 @@ end
 if replace then
 	local function nest(family, name, variation, frames, extra)
 		local folder = "__catmod__/graphics/cat/" .. family .. "-nest/" .. name .. "-v" .. variation
-		local options = {frame_count = frames, direction_count = 1, scale = 0.5, usage = "enemy"}
+		local options = {frame_count = frames, direction_count = 1, scale = 0.5, usage = "enemy",
+			allow_forced_downscale = true}
 		for key, value in pairs(extra or {}) do
 			options[key] = value
 		end
@@ -314,7 +333,7 @@ if replace then
 		if name:find("^acid%-stream%-spitter%-") or name:find("^acid%-stream%-worm%-") then
 			local scale = stream.particle and stream.particle.scale or 0.5
 			stream.particle = util.sprite_load(hairball .. "hairball", {frame_count = 15, scale = scale,
-				priority = "high", animation_speed = 1})
+				priority = "high", animation_speed = 1, allow_forced_downscale = true})
 			-- every particle draws its shadow, hidden or not, which would trail a line of dots
 			stream.shadow = nil
 			stream.spine_animation = nil
