@@ -169,8 +169,10 @@ def run(arm, phase, cat=None, direction=0):
 	# the neck takes up most of the pitch the chest ends at (root, hips and chest), keeping the head level
 	_set(arm, "neck", -0.8 * (pitch + hips + chest))
 	_set(arm, "head", -0.3 * pitch + 2 * math.sin(TAU * phase))
-	# the sway grows down the tail and lags behind the base, like the rise and fall does
-	_aim_tail(arm, _plate_tail(phase), [(5 + 4 * i) * math.sin(TAU * (phase - 0.12 * i)) for i in range(TAIL_BONES)])
+	# lifted a little: the photographed cat's tail is long and slim, ours short and fluffy on a rounder rump, and the
+	# same dip reads as a droop on it. The sway grows down the tail and lags behind the base, like the rise and fall.
+	_aim_tail(arm, [a + 12 for a in _plate_tail(phase)],
+		[(5 + 4 * i) * math.sin(TAU * (phase - 0.12 * i)) for i in range(TAIL_BONES)])
 
 
 def attack(arm, phase, cat=None, direction=0):
