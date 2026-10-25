@@ -16,6 +16,13 @@ import rig  # noqa: E402
 import scene  # noqa: E402
 import sheet  # noqa: E402
 
+
+def grubby(colour):
+	"""As data.lua dulls a coat's colours: a quarter of the way to grey, and a little darker."""
+	grey = sum(colour) / 3
+	return tuple((c * 0.75 + grey * 0.25) * 0.9 for c in colour)
+
+
 # sample coats: (pattern set, coat tint, markings tint), as data.lua tints the masks
 COATS = {
 	"ginger": ("tabby", (1.0, 0.5, 0.14), (0.62, 0.22, 0.05)),
@@ -29,12 +36,6 @@ COATS = {
 
 
 
-def grubby(colour):
-	"""As data.lua dulls a coat's colours: a quarter of the way to grey, and a little darker."""
-	grey = sum(colour) / 3
-	return tuple((c * 0.75 + grey * 0.25) * 0.9 for c in colour)
-
-
 args = sys.argv[sys.argv.index("--") + 1:]
 out_dir, animation = args[0], args[1]
 direction = int(args[2]) if len(args) > 2 else 4
@@ -42,6 +43,7 @@ coat = args[3] if len(args) > 3 else "ginger"
 zoom = float(args[4]) if len(args) > 4 else 1.0
 style = args[5] if len(args) > 5 else "shorthair"
 pattern, coat_tint, marks_tint = COATS[coat]
+coat_tint, marks_tint = grubby(coat_tint), grubby(marks_tint)
 
 WIDTH, HEIGHT = int(448 * zoom), int(384 * zoom)
 scene.reset()
@@ -67,7 +69,6 @@ for frame in range(spec["frames"]):
 	layers = scene.render_layers(sc, ground, cat, [pattern], tmp)
 	colour, shade, mask = layers["colour"], layers["shadow"], layers[pattern]
 	# the masks multiply the white cat by their tint where they cover it, and don't overlap
-	coat_tint, marks_tint = grubby(coat_tint), grubby(marks_tint)
 	rgb = colour[..., :3]
 	marks = mask[..., 1]
 	for value, tint in ((np.clip(mask[..., 0] - marks, 0, 1), coat_tint), (marks, marks_tint)):
