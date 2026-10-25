@@ -39,7 +39,7 @@ SOURCES = [
 	("cubilon", 130968, "purr", 1, None, None),
 ]
 # how loud each kind sits, as the RMS of its loud part in dBFS: purrs soft, meows and hacks forward
-LEVEL = {"meow": -16, "kitten": -16, "hiss": -17, "growl": -18, "chirp": -18, "hack": -16, "purr": -24}
+LEVEL = {"meow": -16, "kitten": -16, "hiss": -17, "growl": -18, "chirp": -18, "hack": -16, "purr": -28}
 HEADERS = {"User-Agent": "Mozilla/5.0 (catmod sound build)"}
 
 
@@ -94,13 +94,12 @@ def segments(audio, shortest, longest, floor_db=-32, gap=0.12):
 	return result
 
 
-def finish(clip, kind, fades=True):
-	"""Fades (not for loops), evens out the loudness, and keeps the peaks clear of clipping."""
+def finish(clip, kind, fade_in=0.008, fade_out=0.05):
+	"""Fades, evens out the loudness, and keeps the peaks clear of clipping."""
 	clip = clip.copy()
-	if fades:
-		fade_in, fade_out = int(RATE * 0.008), int(RATE * 0.05)
-		clip[:fade_in] *= np.linspace(0, 1, fade_in)
-		clip[-fade_out:] *= np.linspace(1, 0, fade_out)
+	fade_in, fade_out = int(RATE * fade_in), int(RATE * fade_out)
+	clip[:fade_in] *= np.linspace(0, 1, fade_in) ** 2
+	clip[-fade_out:] *= np.linspace(1, 0, fade_out) ** 2
 	db, n = envelope(clip)
 	loud = db > db.max() - 12
 	rms = 10 ** (np.mean(db[loud]) / 20)
@@ -111,14 +110,11 @@ def finish(clip, kind, fades=True):
 	return clip
 
 
-def loop(audio, seconds=6.0, crossfade=0.6):
-	"""A seamless loop from the middle of a long recording: its end crossfaded into its start."""
-	length, fade = int(RATE * seconds), int(RATE * crossfade)
-	middle = len(audio) // 2 - length // 2
-	body = audio[middle:middle + length + fade].copy()
-	ramp = np.linspace(0, 1, fade)
-	body[:fade] = body[:fade] * np.sqrt(ramp) + body[length:length + fade] * np.sqrt(1 - ramp)
-	return body[:length]
+def middle(audio, seconds=6.0):
+	"""A stretch from the middle of a long recording."""
+	length = int(RATE * seconds)
+	start = len(audio) // 2 - length // 2
+	return audio[start:start + length].copy()
 
 
 def write(clip, name):
@@ -139,7 +135,7 @@ def main():
 		audio = decode(download(user, sound_id, folder))
 		floor_db, gap = (tuning + [-32, 0.12][len(tuning):])[:2]
 		if kind == "purr":
-			clips = [loop(audio)]
+			clips = [middle(audio)]
 		else:
 			found = sorted(segments(audio, shortest, longest, floor_db, gap), key=lambda s: -s[2])[:count]
 			pad = int(RATE * 0.03)
@@ -147,7 +143,8 @@ def main():
 		for clip in clips:
 			counts[kind] = counts.get(kind, 0) + 1
 			name = f"{kind}-{counts[kind]}.ogg"
-			write(finish(clip, kind, fades=kind != "purr"), name)
+			# a purr swells up and dies away, a passing contented moment rather than a drone
+			write(finish(clip, kind, 1.5, 2.2) if kind == "purr" else finish(clip, kind), name)
 			made.append({"file": name, "source": f"https://freesound.org/people/{user}/sounds/{sound_id}/",
 				"seconds": round(len(clip) / RATE, 2)})
 	json.dump(made, open(os.path.join(folder, "made.json"), "w"), indent=1)
