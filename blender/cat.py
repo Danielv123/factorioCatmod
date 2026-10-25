@@ -574,6 +574,15 @@ def _drawn_eye_material(name, mask, shape):
 	return material
 
 
+def _swap(obj, material):
+	"""Gives obj a material, and tells the depsgraph so: with persistent data, Cycles otherwise keeps an object that
+	didn't move since the last render in its old material."""
+	if obj.data.materials[0] is not material:
+		obj.data.materials[0] = material
+		obj.data.update_tag()
+		obj.update_tag()
+
+
 class Cat:
 	"""The built cat: its objects, and looks to switch between for the colour and mask passes."""
 
@@ -617,16 +626,16 @@ class Cat:
 	def look(self, name):
 		self._look = name
 		for obj, material in self._looks[name].items():
-			obj.data.materials[0] = material
+			_swap(obj, material)
 		if self.eye_state != "open":
 			for eye in self.eyes:
-				eye.data.materials[0] = self._drawn_eyes[self.eye_state]["colour" if name == "colour" else "mask"]
+				_swap(eye, self._drawn_eyes[self.eye_state]["colour" if name == "colour" else "mask"])
 
 	def look_black(self):
 		"""Everything black (no coat), for another cat's mask pass in the same picture."""
 		black = self._looks["tabby"][self.nose]
 		for obj in self._looks["colour"]:
-			obj.data.materials[0] = black
+			_swap(obj, black)
 
 	def set_eyes(self, state):
 		""""open", or drawn on eyes flattened into their sockets: "x" knocked out or "closed" asleep."""

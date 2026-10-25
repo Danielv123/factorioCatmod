@@ -200,7 +200,7 @@ def frame(layout):
 	bed_black = kittens[0][0]._looks["tabby"][kittens[0][0].nose]
 	bed_materials = [obj.data.materials[0] for obj in bed_objects]
 	for obj in bed_objects:
-		obj.data.materials[0] = bed_black
+		cat_module._swap(obj, bed_black)
 	rgb = colour[..., :3].copy()
 	for (cat, _, _), kitten in zip(kittens, layout):
 		pattern, coat, marks = COATS[kitten[3]]
@@ -214,7 +214,7 @@ def frame(layout):
 		coated = np.clip(mask[..., 0:1] - marked, 0, 1)
 		rgb = rgb * (1 - coated + coated * np.array(coat)) * (1 - marked + marked * np.array(marks))
 	for obj, material in zip(bed_objects, bed_materials):
-		obj.data.materials[0] = material
+		cat_module._swap(obj, material)
 	sc.view_settings.view_transform, sc.cycles.samples, sc.cycles.use_denoising = settings
 	for cat, _, _ in kittens:
 		cat.look("colour")
