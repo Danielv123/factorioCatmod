@@ -27,16 +27,24 @@ run() {
 	local job=$1
 	local log
 	log=$(mktemp)
+	local status=0
 	# shellcheck disable=SC2086
 	if "$BLENDER" -b --factory-startup -P $job > "$log" 2>&1 && ! grep -q "Traceback" "$log"; then
 		echo "done: $job ($(grep -c "stale render" "$log" || true) stale passes redone)"
 	else
 		echo "FAILED: $job"
 		grep -A20 "Traceback" "$log" || tail -20 "$log"
+		status=1
 	fi
 	rm -f "$log"
+	return $status
 }
 export -f run
 export BLENDER
-printf '%s\n' "${JOBS[@]}" | xargs -P "$PARALLEL" -I{} bash -c 'run "$1"' _ {}
-echo "all done"
+# xargs exits non-zero if any job did
+if printf '%s\n' "${JOBS[@]}" | xargs -P "$PARALLEL" -I{} bash -c 'run "$1"' _ {}; then
+	echo "all done"
+else
+	echo "some jobs failed"
+	exit 1
+fi

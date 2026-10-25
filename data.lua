@@ -202,7 +202,9 @@ for _, tier in pairs(tiers) do
 		cat.water_reflection = nil
 		cat.walking_sound = nil
 		cat.running_sound_animation_positions = nil
-		local corpse = cat_corpse(cat.name .. "-corpse", tier.unit .. "-corpse", family, scale, variant)
+		-- named apart from the vanilla corpse even for the first coat, which keeps the vanilla unit's name, as the vanilla
+		-- corpses are blanked below
+		local corpse = cat_corpse("catmod-" .. cat.name .. "-corpse", tier.unit .. "-corpse", family, scale, variant)
 		corpse.localised_name = {"entity-name." .. tier.cat}
 		corpse.icon = nil
 		corpse.icons = cat_icons(family, variant)
