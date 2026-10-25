@@ -41,16 +41,35 @@ local function cat_animation(family, name, scale, variant, options)
 	}
 end
 
-local function cat_sound(volume, files)
+-- the clips of each kind in sound/ (made by tools/sounds.py from CC0 recordings, see sound/CREDITS.md)
+local SOUNDS = {meow = 4, kitten = 4, hiss = 1, growl = 5, chirp = 8, hack = 6, purr = 2, ["cat-die"] = 1}
+
+-- A sound picked from some kinds of clip, pitched by the cat's size: kittens squeak, behemoths are deep. At most
+-- max_count play at once; more are skipped rather than cutting off one that's playing.
+local function cat_sound(kinds, volume, scale, max_count)
+	local pitch = (1 / scale) ^ 0.35
 	local variations = {}
-	for _, file in pairs(files) do
-		variations[#variations + 1] = {filename = "__catmod__/sound/" .. file .. ".ogg", volume = volume}
+	for _, kind in pairs(kinds) do
+		local count = SOUNDS[kind]
+		for i = 1, count do
+			variations[#variations + 1] = {
+				filename = "__catmod__/sound/" .. kind .. (kind == "cat-die" and "" or "-" .. i) .. ".ogg",
+				volume = volume,
+				min_speed = pitch * 0.94,
+				max_speed = pitch * 1.06,
+			}
+		end
 	end
 	return {
 		category = "enemy",
 		variations = variations,
-		aggregation = {max_count = 2, remove = true, count_already_playing = true},
+		aggregation = {max_count = max_count or 2, remove = true, count_already_playing = true, priority = "oldest"},
 	}
+end
+
+-- an occasional sound from an idle entity: about once every so many seconds each
+local function now_and_then(sound, seconds, max_sounds)
+	return {sound = sound, probability = 1 / (seconds * 60), max_sounds_per_prototype = max_sounds or 3}
 end
 
 -- where the hairball leaves a spitter cat's mouth in each direction, a little ahead of it
@@ -170,13 +189,18 @@ for _, tier in pairs(tiers) do
 		cat.dying_explosion = nil
 		cat.dying_trigger_effect = fur_puff(variant.coat, math.floor(6 + 8 * scale), 0.035)
 		cat.damaged_trigger_effect = fur_puff(variant.coat, 1, 0.02)
-		cat.attack_parameters.sound = cat_sound(tier.volume, {"meow2"})
-		cat.dying_sound = cat_sound(tier.volume, {"cat-die"})
-		cat.working_sound = {
-			sound = cat_sound(tier.volume * 0.75, {"meow1", "meow2", "meow3"}),
-			probability = 1 / (12 * 60),
-			max_sounds_per_prototype = 2,
-		}
+		-- small ones mew like kittens; fluffy cats chirp and trill; biters hiss and growl as they swipe, fluffy cats hack
+		-- up their hairball
+		local voice = tier.scale < 0.6 and {"kitten", "meow"} or {"meow"}
+		if family == "spitter" then
+			voice = {"chirp", "meow"}
+			cat.attack_parameters.sound = nil
+			cat.attack_parameters.cyclic_sound = {begin_sound = cat_sound({"hack"}, tier.volume, scale, 3)}
+		else
+			cat.attack_parameters.sound = cat_sound({"hiss", "growl"}, tier.volume * 0.8, scale, 2)
+		end
+		cat.working_sound = now_and_then(cat_sound(voice, tier.volume * 0.8, scale, 3), 30)
+		cat.dying_sound = cat_sound({"cat-die"}, tier.volume, scale, 3)
 	end
 end
 
@@ -209,6 +233,14 @@ if replace then
 		turret.dying_explosion = nil
 		turret.dying_trigger_effect = fur_puff(variant.coat, math.floor(8 + 8 * scale), 0.035)
 		turret.damaged_trigger_effect = fur_puff(variant.coat, 1, 0.02)
+		-- a chirp popping up, purring sat up, a trill looking about, a hiss before spitting, a mew ducking back down
+		turret.preparing_sound = cat_sound({"chirp"}, 0.6, scale, 2)
+		turret.prepared_sound = cat_sound({"purr"}, 0.35, scale, 1)
+		turret.prepared_alternative_sound = cat_sound({"chirp"}, 0.5, scale, 2)
+		turret.starting_attack_sound = cat_sound({"hiss", "growl"}, 0.55, scale, 2)
+		turret.folding_sound = cat_sound({"meow"}, 0.45, scale, 2)
+		turret.dying_sound = cat_sound({"cat-die"}, 0.7, scale, 3)
+		turret.attack_parameters.cyclic_sound = {begin_sound = cat_sound({"hack"}, 0.6, scale, 3)}
 		local parameters = {}
 		for i, mouth in pairs(box_mouths) do
 			local angle = (i - 1) / 16 * 2 * math.pi
@@ -251,6 +283,9 @@ if replace then
 			dead[variation] = nest(family, "die", variation, 18)
 		end
 		spawner.graphics_set.animations = idle
+		-- the kittens purr in their sleep, and mew in fright when the bed breaks
+		spawner.working_sound = {sound = cat_sound({"purr"}, 0.4, 0.5, 2), max_sounds_per_prototype = 2}
+		spawner.dying_sound = cat_sound({"kitten"}, 0.7, 0.5, 3)
 		spawner.dying_explosion = nil
 		spawner.dying_trigger_effect = fur_puff({0.95, 0.85, 0.7}, 24, 0.05)
 		spawner.damaged_trigger_effect = nil
@@ -280,6 +315,18 @@ if replace then
 			stream.particle_scale_per_part = 1
 			stream.particle_start_alpha = 1
 			stream.particle_end_alpha = 1
+			-- no acid fizzing: the hairball flies quietly and the hack as it's spat is its sound
+			stream.working_sound = nil
+			for _, action in pairs(stream.initial_action or {}) do
+				local effects = action.action_delivery and action.action_delivery.target_effects
+				if effects then
+					for i = #effects, 1, -1 do
+						if effects[i].type == "play-sound" then
+							table.remove(effects, i)
+						end
+					end
+				end
+			end
 		end
 	end
 	local function soggy(node)

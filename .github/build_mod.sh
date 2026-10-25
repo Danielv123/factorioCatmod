@@ -8,7 +8,7 @@ version=$(jq -r .version info.json)
 root="${name}_$version"
 rm -rf dist
 mkdir -p "dist/$root"
-git ls-files -z -- . ':!:.github' ':!:.gitattributes' ':!:.gitignore' ':!:.luacheckrc' ':!:*screenshot*' ':!:blender' \
+git ls-files -z -- . ':!:.github' ':!:.gitattributes' ':!:.gitignore' ':!:.luacheckrc' ':!:*screenshot*' ':!:blender' ':!:tools' \
 	| xargs -0 cp --parents -t "dist/$root"
 (cd dist && zip -q -X -D -r "$root.zip" "$root")
 rm -rf "dist/$root"
