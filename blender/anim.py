@@ -36,9 +36,15 @@ def _ease(phase, start, end):
 	return t * t * (3 - 2 * t)
 
 
-def _aim_tail(arm, elevations, swings):
+def _direction(elevation, swing):
+	e, s = math.radians(elevation), math.radians(swing)
+	return Vector((math.sin(s) * math.cos(e), -math.cos(s) * math.cos(e), math.sin(e)))
+
+
+def _aim_tail(arm, elevations, swings, ground=None, settle=0.0):
 	"""Points tail bone i at elevations[i] degrees above straight back and swings[i] degrees to the side, in the
-	frame of the posed root bone. Call after the rest of the pose is set."""
+	frame of the posed root bone. ground gives (elevation, swing) per bone in the armature's own frame, where the
+	ground is level whatever the body does, and settle blends towards those. Call after the rest of the pose is set."""
 	bpy.context.view_layer.update()
 	root = arm.pose.bones["root"]
 	body_turn = root.matrix.to_3x3() @ root.bone.matrix_local.to_3x3().inverted()
@@ -48,8 +54,9 @@ def _aim_tail(arm, elevations, swings):
 		bone = pose_bone.bone
 		unposed = parent @ (bone.parent.matrix_local.inverted() @ bone.matrix_local)
 		turn = unposed.to_3x3().normalized()
-		e, s = math.radians(elevations[i]), math.radians(swings[i])
-		target = body_turn @ Vector((math.sin(s) * math.cos(e), -math.cos(s) * math.cos(e), math.sin(e)))
+		target = body_turn @ _direction(elevations[i], swings[i])
+		if ground is not None and settle > 0:
+			target = target.lerp(_direction(*ground[i]), settle)
 		world = turn.col[1].rotation_difference(target.normalized())
 		local = (turn.inverted() @ world.to_matrix() @ turn).to_quaternion()
 		pose_bone.rotation_mode = "QUATERNION"
@@ -211,7 +218,7 @@ def die(arm, phase, cat=None, direction=0):
 	angle = math.radians(90 * roll) * lie
 	# rolled about the body's length, the middle of the body comes to rest on its side above the ground
 	centre = 0.55
-	height = centre - 0.24 * roll + 0.12 * hop + 0.03 * settle
+	height = centre - 0.15 * roll + 0.12 * hop + 0.03 * settle
 	arm.pose.bones["root"].location = (-centre * math.sin(angle) - 0.1 * roll * lie, 0, height - centre * math.cos(angle))
 	arm.pose.bones["root"].rotation_euler = (0, angle, 0)
 	stiff = _ease(phase, 0.15, 0.4)
@@ -222,12 +229,17 @@ def die(arm, phase, cat=None, direction=0):
 		_set(arm, f"thigh.{side}", -25 * stiff)
 		_set(arm, f"shin.{side}", -10 * stiff)
 		_set(arm, f"hock.{side}", 20 * stiff)
-	_set(arm, "neck", -10 * roll)
-	_set(arm, "head", 8 * hop - 10 * roll)
-	# the tail shoots up in surprise, then lies out behind with a little curl at the tip
+	# the big head turns up off the ground, so it rests on it rather than sinking in
+	_set(arm, "neck", -10 * roll, 0, 21 * lie * roll)
+	_set(arm, "head", 8 * hop - 10 * roll, 0, 8 * lie * roll)
+	# the tail shoots up in surprise, stays stiff through the fall, then flops down onto the ground just after the
+	# body lands: down from the rump, and curled round towards the belly (the side facing the camera), limp
 	curl = (0, 2, 5, 10, 16)
+	flop = _ease(phase, 0.5, 0.78)
+	bounce = 0.12 * _bump(phase, 0.78, 0.92)
+	ground = [(-45, 4), (-38, 14), (0, 34), (1, 60), (3, 88)]
 	_aim_tail(arm, [25 * (1 - roll) + 40 * hop + curl[i] * (1 - 0.4 * roll) for i in range(TAIL_BONES)],
-		[0] * TAIL_BONES)
+		[0] * TAIL_BONES, [(e, -lie * s) for e, s in ground], min(1.0, flop - bounce))
 	if cat is not None:
 		cat.knock_out(phase >= 0.45)
 
