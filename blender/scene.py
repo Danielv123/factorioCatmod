@@ -103,21 +103,42 @@ def catchlight(eyes):
 	return light
 
 
+def _stale(pixels, mask):
+	"""Whether a render shows an object left in the other pass's material, which persistent data now and then does:
+	the colour pass draws a white cat, so a large near-black patch is a mask material; the mask passes emit no blue,
+	so blue is the colour material."""
+	opaque = pixels[..., 3] > 0.8
+	if mask:
+		return int((opaque & (pixels[..., 2] > 0.05)).sum()) > 300
+	return int((opaque & (pixels[..., :3].max(axis=2) < 0.05)).sum()) > 300
+
+
 def render_layers(scene, ground, cat, patterns, path):
 	"""Renders the current pose: the colour, the shadow, and each pattern set's masks (coat in red, markings in green,
-	unlit and untouched by colour management). Returns them as arrays by name."""
+	unlit and untouched by colour management). Returns them as arrays by name. A pass that comes out stale is
+	rendered again without persistent data."""
 	import sheet
 
-	def render():
+	def render(mask=False):
 		scene.render.filepath = path
 		bpy.ops.render.render(write_still=True)
-		return sheet.load(path)
+		pixels = sheet.load(path)
+		if _stale(pixels, mask):
+			print("stale render, again without persistent data")
+			scene.render.use_persistent_data = False
+			bpy.ops.render.render(write_still=True)
+			scene.render.use_persistent_data = True
+			pixels = sheet.load(path)
+		return pixels
 
 	layers = {}
 	cat.look("colour")
-	for name, shadow in (("colour", False), ("shadow", True)):
-		set_pass(ground, cat.subjects, shadow)
-		layers[name] = render()
+	set_pass(ground, cat.subjects, False)
+	layers["colour"] = render()
+	set_pass(ground, cat.subjects, True)
+	scene.render.filepath = path
+	bpy.ops.render.render(write_still=True)
+	layers["shadow"] = sheet.load(path)
 	settings = (scene.view_settings.view_transform, scene.view_settings.look, scene.cycles.samples,
 		scene.cycles.use_denoising)
 	set_pass(ground, cat.subjects, False)
@@ -126,8 +147,8 @@ def render_layers(scene, ground, cat, patterns, path):
 	scene.cycles.use_denoising = False
 	for pattern in patterns:
 		cat.look(pattern)
-		layers[pattern] = render()
-	scene.view_settings.view_transform, scene.view_settings.look, scene.cycles.samples, \
-		scene.cycles.use_denoising = settings
+		layers[pattern] = render(mask=True)
+	(scene.view_settings.view_transform, scene.view_settings.look, scene.cycles.samples,
+		scene.cycles.use_denoising) = settings
 	cat.look("colour")
 	return layers
