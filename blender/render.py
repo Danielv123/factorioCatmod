@@ -1,10 +1,12 @@
 # Renders a cat animation in Factorio's 16 directions and packs its layers into graphics/cat/<family>/:
 #   <animation>.png                   the cat with white fur, eyes and nose: drawn as is
 #   <animation>-shadow.png
-#   <animation>-coat-<pattern>.png    where the coat colour goes, for each pattern set
-#   <animation>-marks-<pattern>.png   where the stripe or patch colour goes
-# The masks are alpha only; Factorio multiplies the cat by their tint where they cover it ("multiplicative-with-alpha"),
-# so they don't overlap.
+#   <animation>-coat-<white>.png      where the coat colour goes, markings included, for each amount of white
+#   <animation>-marks-<pattern>.png   where the stripes or patches go, for each pattern set
+# The masks are alpha only, at half resolution (a mask only says where a colour goes, and the fur blurs its edges);
+# Factorio multiplies the cat by their tint where they cover it ("multiplicative-with-alpha"). The coat mask is shared
+# by every pattern with the same white, so markings are multiplied on top of the coat colour (data.lua tints them by
+# markings / coat).
 # Spitters and worms also get mouth.lua: where in each direction the hairball leaves the mouth, for the stream's start.
 #   blender -b --factory-startup -P render.py -- <animation> [biter|spitter|worm]
 # The animations are a family's keys in anim.FAMILIES: run, attack and die, or for the worms folded, preparing,
@@ -49,6 +51,14 @@ armature.parent = root
 patterns = list(anim.FAMILIES[family]["patterns"])
 tmp = os.path.join(bpy.app.tempdir, "frame.png")
 layers = {}
+seen = set()
+
+
+def half(mask):
+	"""A mask at half resolution, each pixel the average of four."""
+	h, w = mask.shape
+	return mask[:h - h % 2, :w - w % 2].reshape(h // 2, 2, w // 2, 2).mean(axis=(1, 3))
+
 mouths = []
 
 
@@ -74,8 +84,12 @@ for direction in directions:
 		layers.setdefault("-shadow", []).append(rendered["shadow"])
 		for pattern in patterns:
 			coat, marks = rendered[pattern][..., 0], rendered[pattern][..., 1]
-			layers.setdefault(f"-coat-{pattern}", []).append(colour[..., 3] * np.clip(coat - marks, 0, 1))
-			layers.setdefault(f"-marks-{pattern}", []).append(colour[..., 3] * marks)
+			white = cat_module.PATTERNS[pattern]["white"]
+			if f"-coat-{white}" not in seen:
+				layers.setdefault(f"-coat-{white}", []).append(half(colour[..., 3] * coat))
+				seen.add(f"-coat-{white}")
+			layers.setdefault(f"-marks-{pattern}", []).append(half(colour[..., 3] * marks))
+		seen.clear()
 
 		if family in ("spitter", "worm") and animation == "attack" and frame == spec["frames"] - 1:
 			mouths.append(mouth())
@@ -83,7 +97,7 @@ for direction in directions:
 out_dir = os.path.join(HERE, "..", "graphics", "cat", family)
 for suffix, frames in layers.items():
 	kind = "colour" if not suffix else "shadow" if suffix == "-shadow" else "mask"
-	sheet.pack(frames, out_dir, animation + suffix, kind)
+	sheet.pack(frames, out_dir, animation + suffix, kind, downscale=2 if kind == "mask" else 1)
 if mouths:
 	lines = ["-- where the hairball leaves the mouth in each of the 16 directions, in tiles at scale 1", "return", "{"]
 	lines += [f"  {{{x:.4f}, {y:.4f}}}," for x, y in mouths]

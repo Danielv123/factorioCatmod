@@ -1,7 +1,8 @@
 -- The cats of each enemy tier: short-haired cats for the biters, fluffy long-haired ones for the spitters, one coat
 -- family per tier in a few variants so a pack doesn't look all the same. Factorio has one look per unit, so each
 -- variant is its own unit; spawners split the tier's spawn weight over them.
--- A coat is a pattern set (which coat and markings masks) and the colours the masks tint the white cat with.
+-- A coat is a pattern set (which coat and markings masks) and the colours the masks tint the white cat with. The
+-- markings are multiplied on top of the coat colour, so they must be darker than it in every channel.
 return {
 	{family = "biter", unit = "small-biter", cat = "small-cat", scale = 0.5, volume = 0.4,
 		variants = {
@@ -24,7 +25,7 @@ return {
 	{family = "biter", unit = "behemoth-biter", cat = "behemoth-cat", scale = 1.2, volume = 0.8,
 		variants = {
 			{pattern = "patches-white", coat = {1.0, 0.55, 0.18}, marks = {0.12, 0.1, 0.1}, size = 1.0},
-			{pattern = "patches", coat = {0.13, 0.1, 0.09}, marks = {0.85, 0.42, 0.12}, size = 1.04},
+			{pattern = "patches", coat = {0.85, 0.42, 0.12}, marks = {0.13, 0.1, 0.09}, size = 1.04},
 			{pattern = "patches-white", coat = {1.0, 0.8, 0.58}, marks = {0.45, 0.47, 0.52}, size = 0.96},
 		}},
 	{family = "spitter", unit = "small-spitter", cat = "small-fluffy-cat", scale = 0.5, volume = 0.4,
@@ -36,7 +37,7 @@ return {
 	{family = "spitter", unit = "medium-spitter", cat = "medium-fluffy-cat", scale = 0.7, volume = 0.5,
 		variants = {
 			{pattern = "tabby", coat = {0.5, 0.54, 0.62}, marks = {0.44, 0.48, 0.56}, size = 1.0},
-			{pattern = "patches", coat = {0.5, 0.54, 0.62}, marks = {0.95, 0.8, 0.62}, size = 1.04},
+			{pattern = "patches", coat = {0.95, 0.8, 0.62}, marks = {0.5, 0.54, 0.62}, size = 1.04},
 			{pattern = "tabby", coat = {0.78, 0.7, 0.72}, marks = {0.7, 0.62, 0.64}, size = 0.96},
 		}},
 	{family = "spitter", unit = "big-spitter", cat = "big-fluffy-cat", scale = 1.0, volume = 0.6,

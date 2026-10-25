@@ -20,9 +20,14 @@ Each animation has these layers:
 
 - `<animation>`: the cat with white fur, eyes and nose, drawn as is.
 - `<animation>-shadow`.
-- `<animation>-coat-<pattern>` and `<animation>-marks-<pattern>`: alpha-only masks of where the coat and its stripes
-  or patches are, for each pattern set. `data.lua` draws them with `multiplicative-with-alpha` and a tint, which
-  multiplies the white cat by the coat's colours, so every coat in `variants.lua` shares the same sheets.
+- `<animation>-coat-<white>`: an alpha-only mask of where the coat is, markings included, for each amount of white
+  (`low`, `high` or `none`), shared by the pattern sets with that white.
+- `<animation>-marks-<pattern>`: an alpha-only mask of where the stripes or patches are, for each pattern set.
+
+The masks are half resolution, drawn twice the size: they only say where a colour goes, and the fur blurs their edges.
+`data.lua` draws them with `multiplicative-with-alpha` and a tint, multiplying the white cat by the coat colour and
+then the markings by markings / coat, so every coat in `variants.lua` shares the same sheets. A coat's markings must be
+darker than its coat in every channel.
 
 `preview.py -- <out_dir> <animation> [direction] [coat] [zoom] [style]` renders one direction composed with a sample
 coat, and `sideview.py -- <out.png> <animation> [style]` a contact sheet from straight side on, for checking an

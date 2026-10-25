@@ -17,8 +17,21 @@ local function grubby(colour)
 		(colour[3] * 0.75 + grey * 0.25) * 0.9}
 end
 
--- the white cat, the coat and markings masks multiplying it by their colours, and the shadow
+-- how much white each pattern set has, which picks its coat mask (shared by the patterns with the same white)
+local WHITE = {tabby = "low", ["tabby-white"] = "high", patches = "low", ["patches-white"] = "high", points = "none"}
+
+-- the masks are magnified, so they're sampled smoothly rather than in blocks
+local MASK_FLAGS = {"mask", "linear-magnification", "linear-minification"}
+
+-- The white cat, the coat and markings masks multiplying it by their colours, and the shadow. The coat mask covers the
+-- markings too, so the markings multiply by markings / coat, which lands them on their own colour. The masks are half
+-- resolution, drawn twice the size.
 local function cat_animation(family, name, scale, variant, options)
+	local coat, marks = grubby(variant.coat), grubby(variant.marks)
+	local relative = {}
+	for i = 1, 3 do
+		relative[i] = math.min(1, marks[i] / math.max(coat[i], 0.001))
+	end
 	local function layer(file, extra)
 		-- allow_forced_downscale: on a lower sprite resolution setting the game loads them at half size, as it
 		-- does vanilla's enemies
@@ -34,10 +47,10 @@ local function cat_animation(family, name, scale, variant, options)
 	return {
 		layers = {
 			layer(name),
-			layer(name .. "-coat-" .. variant.pattern, {blend_mode = "multiplicative-with-alpha",
-				tint = grubby(variant.coat)}),
-			layer(name .. "-marks-" .. variant.pattern, {blend_mode = "multiplicative-with-alpha",
-				tint = grubby(variant.marks)}),
+			layer(name .. "-coat-" .. WHITE[variant.pattern], {blend_mode = "multiplicative-with-alpha", tint = coat,
+				scale = scale, flags = MASK_FLAGS}),
+			layer(name .. "-marks-" .. variant.pattern, {blend_mode = "multiplicative-with-alpha", tint = relative,
+				scale = scale, flags = MASK_FLAGS}),
 			layer(name .. "-shadow", {draw_as_shadow = true}),
 		},
 	}

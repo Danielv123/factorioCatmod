@@ -57,9 +57,10 @@ def write_png(path, pixels):
 		f.write(chunk(b"IEND", b""))
 
 
-def pack(frames, out_dir, name, kind="colour"):
+def pack(frames, out_dir, name, kind="colour", downscale=1):
 	"""frames in Factorio's frame order (all frames of direction 0, then direction 1, ...): RGBA float arrays for
-	"colour", the shadow pass's RGBA for "shadow", or float alpha arrays for "mask"."""
+	"colour", the shadow pass's RGBA for "shadow", or float alpha arrays for "mask". downscale is how many times
+	smaller than the colour layer the frames are (data.lua draws them that many times larger)."""
 	if kind == "colour":
 		frames = [np.round(np.clip(f, 0, 1) * 255).astype(np.uint8) for f in frames]
 	else:
@@ -95,7 +96,8 @@ def pack(frames, out_dir, name, kind="colour"):
 	filenames = ",\n".join(f'    "-{i + 1}.png"' for i in range(files))
 	# util.by_pixel counts 32 px a tile, and these sheets have 64 at scale 1 (Factorio draws them at scale 0.5)
 	descriptor = (f"return\n{{\n  width = {fw},\n  height = {fh},\n"
-		f"  shift = util.by_pixel({shift_x / 2:.1f}, {shift_y / 2:.1f}),\n  line_length = {line_length},\n"
+		f"  shift = util.by_pixel({shift_x * downscale / 2:.1f}, {shift_y * downscale / 2:.1f}),\n"
+		f"  line_length = {line_length},\n"
 		f"  filenames =\n  {{\n{filenames},\n  }},\n  lines_per_file = {lines_per_file},\n}}\n")
 	with open(os.path.join(out_dir, f"{name}.lua"), "w", newline="\n") as f:
 		f.write(descriptor)
