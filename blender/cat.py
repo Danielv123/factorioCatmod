@@ -50,8 +50,18 @@ PATTERNS = {
 	"tabby-white": {"marks": "stripes", "white": "high"},
 	"patches": {"marks": "patches", "white": "low"},
 	"patches-white": {"marks": "patches", "white": "high"},
+	"points": {"marks": "points", "white": "none"},
 }
 IRIS = ((0.45, 0.75, 0.15), (0.95, 0.75, 0.2))
+
+# Fur styles: lengths are multiples of the short coat's; the rest shape each strand (how far it rises off the skin, how
+# hard the tips clump, how much they wander) and how many there are per square tile.
+STYLES = {
+	"shorthair": {"body": 1.0, "face": 1.0, "ruff": 1.0, "tail": 1.0, "legs": 1.0, "lift": 0.32, "clump": 0.75,
+		"frizz": 0.4, "density": 60000, "radius": 0.0026},
+	"longhair": {"body": 1.9, "face": 1.25, "ruff": 2.0, "tail": 2.3, "legs": 1.6, "lift": 0.5, "clump": 0.85,
+		"frizz": 0.75, "density": 48000, "radius": 0.003},
+}
 
 
 def _metaball_mesh():
@@ -165,7 +175,7 @@ def _smoothstep(edge0, edge1, x):
 	return t * t * (3 - 2 * t)
 
 
-def _fur_fields(body):
+def _fur_fields(body, style):
 	"""Per vertex fur length, comb direction and bare pink skin, from where on the cat the vertex is."""
 	mesh = body.data
 	length = mesh.attributes.new("fur_len", "FLOAT", "POINT")
@@ -175,35 +185,36 @@ def _fur_fields(body):
 	for v in mesh.vertices:
 		p = v.co
 		n = v.normal
-		fur = 0.065
+		fur = 0.065 * style["body"]
 		direction = Vector((0, -1, -0.35))
 		bare = 0.0
 		# legs and paws: short, combed down
 		leg = 1 - _smoothstep(0.22, 0.4, p.z)
-		fur = fur * (1 - leg) + 0.035 * leg
+		fur = fur * (1 - leg) + 0.035 * style["legs"] * leg
 		direction = direction.lerp(Vector((0, -0.15, -1)), leg)
 		paw = 1 - _smoothstep(0.07, 0.13, p.z)
-		fur = fur * (1 - paw) + 0.02 * paw
+		fur = fur * (1 - paw) + 0.02 * min(1.3, style["legs"]) * paw
 		# a fluffy chest ruff, combed down
 		ruff = 1 - _smoothstep(0.12, 0.32, (p - Vector((0, 0.42, 0.62))).length)
-		fur = max(fur, 0.11 * ruff * _smoothstep(-0.2, 0.4, n.y))
+		fur = max(fur, 0.11 * style["ruff"] * ruff * _smoothstep(-0.2, 0.4, n.y))
 		direction = direction.lerp(Vector((0, 0.25, -1)), ruff)
 		# the head: short on the face, fluffy cheeks combed outwards
 		head = 1 - _smoothstep(HEAD_RADIUS - 0.04, HEAD_RADIUS + 0.08, (p - HEAD).length)
-		fur = fur * (1 - head) + 0.04 * head
+		fur = fur * (1 - head) + 0.04 * style["face"] * head
 		direction = direction.lerp(Vector((0, -1, 0.2)), head)
 		face = head * _smoothstep(0.1, 0.5, n.y) * _smoothstep(HEAD.y + 0.1, HEAD.y + 0.3, p.y)
-		fur = fur * (1 - face) + 0.016 * face
+		fur = fur * (1 - face) + 0.016 * style["face"] * face
 		direction = direction.lerp((p - MUZZLE).normalized(), face)
 		for side in (-1, 1):
 			cheek = 1 - _smoothstep(0.08, 0.2, (p - (HEAD + Vector((side * 0.34, 0.12, -0.15)))).length)
-			fur = max(fur, 0.09 * cheek)
+			fur = max(fur, 0.09 * style["ruff"] * cheek)
 			direction = direction.lerp(Vector((side, -0.4, -0.35)), cheek)
 		# the ears: short fur behind, bare and pink in front
 		for inverse, forward in ears:
 			local = inverse @ p
 			if local.z > 0.0 and abs(local.x) < 0.24 and abs(local.y) < 0.14:
-				fur = 0.014
+				# a little tuft at the tips on long coats
+				fur = 0.014 + 0.03 * (style["face"] - 1) * _smoothstep(0.2, 0.3, local.z)
 				direction = Vector((0, 0, 1))
 				inner = _smoothstep(-0.2, 0.3, n.dot(forward)) * (1 - _smoothstep(0.1, 0.15, abs(local.x)
 					+ 0.4 * max(0, 0.12 - local.z)))
@@ -212,7 +223,7 @@ def _fur_fields(body):
 		# the tail: long, combed towards the tip
 		segment = min(range(len(TAIL) - 1), key=lambda i: (p - (TAIL[i] + TAIL[i + 1]) / 2).length)
 		if (p - (TAIL[segment] + TAIL[segment + 1]) / 2).length < 0.15 and p.y < -0.5:
-			fur = 0.075
+			fur = 0.075 * style["tail"]
 			direction = TAIL[segment + 1] - TAIL[segment]
 		# none around the eyes and nose
 		for eye in EYES:
@@ -278,7 +289,7 @@ class _Tree:
 			"Result")
 
 
-def _fur(body, fur_material, density):
+def _fur(body, fur_material, style):
 	"""Fur grown on the rest pose once, then bent along with the posed body by Deform Curves on Surface."""
 	# the strands find their spot on the skin again each frame by its UV coordinate
 	bpy.context.view_layer.objects.active = body
@@ -308,7 +319,7 @@ def _fur(body, fur_material, density):
 	has_fur = t.out(t.node("FunctionNodeCompare", {"A": named("fur_len", "FLOAT"), "B": 0.004},
 		data_type="FLOAT", operation="GREATER_THAN"), "Result")
 	distribute = t.node("GeometryNodeDistributePointsOnFaces", {"Mesh": skin, "Selection": has_fur,
-		"Density": density, "Seed": 7}, distribute_method="RANDOM")
+		"Density": style["density"], "Seed": 7}, distribute_method="RANDOM")
 	points = t.out(distribute, "Points")
 	position = t.out(t.node("GeometryNodeInputPosition"), "Position")
 
@@ -334,7 +345,7 @@ def _fur(body, fur_material, density):
 
 	# each strand rises off the skin and lies down along the comb direction
 	f = t.out(t.node("GeometryNodeSplineParameter"), "Factor")
-	lift = t.math("MULTIPLY", t.math("MULTIPLY", f, t.math("MULTIPLY_ADD", f, -0.6, 1.0)), 0.32)
+	lift = t.math("MULTIPLY", t.math("MULTIPLY", f, t.math("MULTIPLY_ADD", f, -0.6, 1.0)), style["lift"])
 	along = t.math("MULTIPLY", f, t.math("MULTIPLY_ADD", f, 0.6, 0.4))
 	strand = t.vmath("ADD", t.vmath("SCALE", named("n"), scale=lift), t.vmath("SCALE", named("t"), scale=along))
 	strand = t.vmath("SCALE", strand, scale=named("len", "FLOAT"))
@@ -342,14 +353,14 @@ def _fur(body, fur_material, density):
 	root = named("root")
 	voronoi = t.node("ShaderNodeTexVoronoi", {"Vector": root, "Scale": 36.0}, voronoi_dimensions="3D")
 	clump = t.vmath("SCALE", t.vmath("SUBTRACT", t.out(voronoi, "Position"), root),
-		scale=t.math("MULTIPLY", t.math("POWER", f, 1.5), 0.75))
+		scale=t.math("MULTIPLY", t.math("POWER", f, 1.5), style["clump"]))
 	noise = t.node("ShaderNodeTexNoise", {"Vector": t.vmath("SCALE", root, scale=40.0), "Scale": 1.0,
 		"Detail": 1.0}, noise_dimensions="3D")
 	frizz = t.vmath("SCALE", t.vmath("SUBTRACT", t.out(noise, "Color"), (0.5, 0.5, 0.5)),
-		scale=t.math("MULTIPLY", t.math("MULTIPLY", f, named("len", "FLOAT")), 0.4))
+		scale=t.math("MULTIPLY", t.math("MULTIPLY", f, named("len", "FLOAT")), style["frizz"]))
 	tip = t.vmath("ADD", t.vmath("ADD", root, strand), t.vmath("ADD", clump, frizz))
 	curves = t.out(t.node("GeometryNodeSetPosition", {"Geometry": curves, "Position": tip}), "Geometry")
-	radius = t.math("MULTIPLY", t.math("MULTIPLY_ADD", f, -0.85, 1.0), 0.0026)
+	radius = t.math("MULTIPLY", t.math("MULTIPLY_ADD", f, -0.85, 1.0), style["radius"])
 	curves = t.out(t.node("GeometryNodeSetCurveRadius", {"Curve": curves, "Radius": radius}), "Curve")
 	curves = store(curves, "root_rest", root, domain="CURVE")
 	curves = store(curves, "surface_uv_coordinate", named("uv"), "FLOAT2", "CURVE")
@@ -383,7 +394,10 @@ def _fur(body, fur_material, density):
 
 
 def _white(t, p, level):
-	"""Shader nodes for how white the coat is at rest position p: a little (belly, chest, muzzle, paws) or a lot."""
+	"""Shader nodes for how white the coat is at rest position p: not at all, a little (belly, chest, muzzle, paws) or
+	a lot."""
+	if level == "none":
+		return t.math("MULTIPLY", 0.0, 0.0)
 	sep = t.node("ShaderNodeSeparateXYZ", {"Vector": p})
 	x, y, z = t.out(sep, "X"), t.out(sep, "Y"), t.out(sep, "Z")
 	absx = t.math("ABSOLUTE", x)
@@ -404,11 +418,20 @@ def _white(t, p, level):
 
 
 def _marks(t, p, kind):
-	"""Shader nodes for tabby stripes or calico patches at rest position p."""
+	"""Shader nodes for tabby stripes, calico patches or colour points at rest position p."""
 	if kind == "stripes":
 		wave = t.node("ShaderNodeTexWave", {"Vector": p, "Scale": 2.1, "Distortion": 5.0, "Detail": 2.0,
 			"Detail Scale": 1.5}, wave_type="BANDS", bands_direction="Y")
 		return t.map_range(t.out(wave, "Fac"), 0.62, 0.85)
+	if kind == "points":
+		# dark towards the extremities: the face mask, ears, legs and tail, shading off over the body
+		sep = t.node("ShaderNodeSeparateXYZ", {"Vector": p})
+		y, z = t.out(sep, "Y"), t.out(sep, "Z")
+		face = t.map_range(t.vmath("DISTANCE", p, tuple(MUZZLE)), 0.3, 0.14)
+		ears = t.map_range(z, HEAD.z + 0.3, HEAD.z + 0.42)
+		legs = t.map_range(z, 0.36, 0.2)
+		tail = t.map_range(y, -0.55, -0.75)
+		return t.math("MAXIMUM", t.math("MAXIMUM", face, ears), t.math("MAXIMUM", legs, tail))
 	noise = t.node("ShaderNodeTexNoise", {"Vector": p, "Scale": 2.4, "Detail": 3.0, "Roughness": 0.55})
 	return t.map_range(t.out(noise, "Fac"), 0.5, 0.56)
 
@@ -518,17 +541,25 @@ def _nose():
 	return nose
 
 
-def _x_eye_material(name, mask):
-	"""Comical X eyes for a knocked out cat: an X on fur, the fur taking the coat colour in the masks."""
+def _drawn_eye_material(name, mask, shape):
+	"""Eyes drawn on fur, the fur taking the coat colour in the masks: comical X eyes for a knocked out cat ("x"), or a
+	closed eye's curved line for a sleeping one ("closed")."""
 	material = bpy.data.materials.new(name)
 	material.use_nodes = True
 	t = _Tree(material.node_tree)
 	local = t.out(t.node("ShaderNodeTexCoord"), "Object")
 	sep = t.node("ShaderNodeSeparateXYZ", {"Vector": local})
 	u, v = t.out(sep, "X"), t.out(sep, "Z")
-	line = t.math("MINIMUM", t.math("ABSOLUTE", t.math("SUBTRACT", u, v)), t.math("ABSOLUTE", t.math("ADD", u, v)))
-	x = t.math("MULTIPLY", t.math("LESS_THAN", line, 0.024), t.math("LESS_THAN", t.vmath("LENGTH", t.out(
-		t.node("ShaderNodeCombineXYZ", {"X": u, "Z": v}), 0)), 0.095))
+	if shape == "x":
+		line = t.math("MINIMUM", t.math("ABSOLUTE", t.math("SUBTRACT", u, v)),
+			t.math("ABSOLUTE", t.math("ADD", u, v)))
+		x = t.math("MULTIPLY", t.math("LESS_THAN", line, 0.024), t.math("LESS_THAN", t.vmath("LENGTH", t.out(
+			t.node("ShaderNodeCombineXYZ", {"X": u, "Z": v}), 0)), 0.095))
+	else:
+		# a contented curve, low in the eye: v = 5 u^2 - 0.03
+		curve = t.math("ABSOLUTE", t.math("SUBTRACT", v, t.math("SUBTRACT", t.math("MULTIPLY",
+			t.math("MULTIPLY", u, u), 5.0), 0.03)))
+		x = t.math("MULTIPLY", t.math("LESS_THAN", curve, 0.016), t.math("LESS_THAN", t.math("ABSOLUTE", u), 0.085))
 	if mask:
 		t.nodes.remove(t.nodes["Principled BSDF"])
 		colour = t.node("ShaderNodeCombineXYZ", {"X": t.math("SUBTRACT", 1.0, x), "Y": 0.0, "Z": 0.0})
@@ -546,11 +577,11 @@ def _x_eye_material(name, mask):
 class Cat:
 	"""The built cat: its objects, and looks to switch between for the colour and mask passes."""
 
-	def __init__(self, density):
+	def __init__(self, style):
 		self.body = _body()
-		_fur_fields(self.body)
+		_fur_fields(self.body, style)
 		self.body.data.materials.append(_skin_material())
-		self.fur = _fur(self.body, _fur_material(), density)
+		self.fur = _fur(self.body, _fur_material(), style)
 		self.eyes = _eyes()
 		self.nose = _nose()
 		# the body and what moves rigidly with it; the fur is the body's child
@@ -568,25 +599,49 @@ class Cat:
 			self._looks[name] = {self.fur: _mask_material(f"FurMask.{name}", pattern, "root_rest"),
 				self.body: _mask_material(f"SkinMask.{name}", pattern, "rest_position"), self.nose: black,
 				**{eye: black for eye in self.eyes}}
-		self._x_eyes = {"colour": _x_eye_material("XEye", False), "mask": _x_eye_material("XEyeMask", True)}
-		self.knocked_out = False
+		self._drawn_eyes = {shape: {"colour": _drawn_eye_material(f"Eye.{shape}", False, shape),
+			"mask": _drawn_eye_material(f"EyeMask.{shape}", True, shape)} for shape in ("x", "closed")}
+		self.eye_state = "open"
 		self._look = "colour"
+
+	def add_props(self, objects):
+		"""Things rendered with the cat but never tinted, like the worms' box: their own materials in colour, black
+		(no coat) in the masks."""
+		black = self._looks["tabby"][self.nose]
+		for obj in objects:
+			self._looks["colour"][obj] = obj.data.materials[0]
+			for name in PATTERNS:
+				self._looks[name][obj] = black
+		self.subjects += objects
 
 	def look(self, name):
 		self._look = name
 		for obj, material in self._looks[name].items():
 			obj.data.materials[0] = material
-		if self.knocked_out:
+		if self.eye_state != "open":
 			for eye in self.eyes:
-				eye.data.materials[0] = self._x_eyes["colour" if name == "colour" else "mask"]
+				eye.data.materials[0] = self._drawn_eyes[self.eye_state]["colour" if name == "colour" else "mask"]
 
-	def knock_out(self, out):
-		"""X eyes, flattened into their sockets, or open eyes again."""
-		self.knocked_out = out
+	def look_black(self):
+		"""Everything black (no coat), for another cat's mask pass in the same picture."""
+		black = self._looks["tabby"][self.nose]
+		for obj in self._looks["colour"]:
+			obj.data.materials[0] = black
+
+	def set_eyes(self, state):
+		""""open", or drawn on eyes flattened into their sockets: "x" knocked out or "closed" asleep."""
+		self.eye_state = state
 		for eye in self.eyes:
-			eye.scale = (1, 0.35 if out else 1, 1)
+			eye.scale = (1, 1 if state == "open" else 0.35, 1)
 		self.look(self._look)
 
+	def knock_out(self, out):
+		self.set_eyes("x" if out else "open")
 
-def build(density=60000):
-	return Cat(density)
+
+def build(style="shorthair", density=None):
+	"""A cat in a fur style; density overrides the style's, for quick test renders."""
+	style = dict(STYLES[style])
+	if density is not None:
+		style["density"] = density
+	return Cat(style)

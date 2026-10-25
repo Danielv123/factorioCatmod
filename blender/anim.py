@@ -16,6 +16,7 @@ def _set(arm, bone, x=0.0, y=0.0, z=0.0):
 
 
 def rest(arm):
+	arm.scale = (1, 1, 1)
 	for bone in arm.pose.bones:
 		bone.rotation_mode = "XYZ"
 		bone.rotation_euler = (0, 0, 0)
@@ -244,9 +245,199 @@ def die(arm, phase, cat=None, direction=0):
 		cat.knock_out(phase >= 0.45)
 
 
+def _trot_leg(arm, front, side, p):
+	"""On the ground for the first 0.55 of its cycle, sweeping back with the paw flat; then folded and carried
+	forward."""
+	p %= 1
+	if p < 0.55:
+		t = p / 0.55
+		swing = 28 - 56 * t
+		bend = 0.0
+	else:
+		t = (p - 0.55) / 0.45
+		swing = -28 + 56 * _ease(t, 0.0, 1.0)
+		bend = _bump(t, 0.0, 1.0)
+	if front:
+		_set(arm, f"front_upper.{side}", swing)
+		_set(arm, f"front_lower.{side}", -70 * bend)
+		_set(arm, f"front_paw.{side}", -(swing - 70 * bend) * (1 - bend) - 40 * bend)
+	else:
+		_set(arm, f"thigh.{side}", swing * 0.9)
+		_set(arm, f"shin.{side}", 35 * bend)
+		_set(arm, f"hock.{side}", -55 * bend)
+		_set(arm, f"hind_paw.{side}", -swing * 0.9 * (1 - bend) + 35 * bend)
+
+
+def trot(arm, phase, cat=None, direction=0):
+	"""The spitters' gait: a dainty trot, the diagonal pairs of legs moving together, the body bobbing twice a stride
+	and swaying a little side to side, and the plume of a tail held high, bobbing and swaying behind."""
+	rest(arm)
+	_trot_leg(arm, True, "L", phase)
+	_trot_leg(arm, False, "R", phase)
+	_trot_leg(arm, True, "R", phase + 0.5)
+	_trot_leg(arm, False, "L", phase + 0.5)
+	arm.pose.bones["root"].location = (0, 0, 0.03 * (0.5 - 0.5 * math.cos(2 * TAU * (phase - 0.1))))
+	_set(arm, "hips", 0, 0, 5 * math.sin(TAU * phase))
+	_set(arm, "chest", 0, 0, -4 * math.sin(TAU * phase))
+	_set(arm, "neck", 0, 0, 2 * math.sin(TAU * phase))
+	_set(arm, "head", 3 * math.cos(2 * TAU * phase))
+	plume = (68, 76, 66, 50, 34)
+	_aim_tail(arm, [plume[i] + 5 * math.sin(2 * TAU * (phase - 0.08 * i)) for i in range(TAIL_BONES)],
+		[(6 + 5 * i) * math.sin(TAU * (phase - 0.15 * i)) for i in range(TAIL_BONES)])
+
+
+def spit(arm, phase, cat=None, direction=0):
+	"""The spitters' attack, coughing up a hairball, in vanilla's spitter frame order: a crouch (frames 1 to 6), the
+	neck stretched out ready (7), then heaves building up to the hairball (8 to 14); in game the heaves rock back and
+	forth between 7 and 14 while it spits."""
+	rest(arm)
+	crouch = _ease(phase, 0.0, 6 / 13)
+	heave = _ease(phase, 6 / 13, 1.0)
+	hack = math.sin(3 * TAU * phase) * heave * (1 - heave) * 4
+	arm.pose.bones["root"].location = (0, 0.12 * heave, -0.11 * crouch)
+	_set(arm, "hips", 10 * crouch + 16 * heave)
+	_set(arm, "chest", -14 * crouch - 34 * heave + 5 * hack)
+	_set(arm, "neck", -12 * crouch + 26 * heave)
+	_set(arm, "head", 8 * crouch - 34 * heave + 6 * hack)
+	for side in ("L", "R"):
+		_set(arm, f"front_upper.{side}", 14 * crouch + 6 * heave)
+		_set(arm, f"front_lower.{side}", -12 * crouch)
+		_set(arm, f"front_paw.{side}", -2 * crouch - 6 * heave)
+		_set(arm, f"thigh.{side}", -8 * crouch)
+		_set(arm, f"shin.{side}", 18 * crouch)
+		_set(arm, f"hock.{side}", -22 * crouch)
+		_set(arm, f"hind_paw.{side}", 12 * crouch)
+	_aim_tail(arm, [12 - 6 * crouch - 3 * i + 8 * hack * i / 4 for i in range(TAIL_BONES)],
+		[10 * heave * math.sin(2 * TAU * phase) * i / (TAIL_BONES - 1) for i in range(TAIL_BONES)])
+
+
+# The worms: a cat in a cardboard box (box.py), which stays put while the cat turns inside it.
+SIT_PITCH = 55
+
+
+def _sit(arm, emerge=1.0, pitch=SIT_PITCH, lean=0.0, look=0.0, tilt=0.0, nod=0.0):
+	"""Sitting up in the box: the body pitched upright about the hips and moved over the box's middle, front paws on
+	the rim, the head brought back level to look out, the tail standing up behind it inside the box. emerge 0 is
+	squashed down out of sight with the ear tips poking out, 1 sat up with the chin over the rim, more stretches up
+	tall; lean tips the body forward over the rim, look turns the head, tilt tilts it, nod drops it."""
+	up = min(1.0, max(0.0, emerge))
+	sitting = pitch
+	p = math.radians(sitting - lean)
+	root = arm.pose.bones["root"]
+	root.rotation_euler = (p, 0, 0)
+	# pitching about the feet swings the head back; this keeps the chest over the box's middle
+	# hidden, it's centred in the box, head to rump, so neither pokes through a wall
+	root.location = (0, 0.62 * math.sin(p) - 0.15 + 0.35 * lean / 40 + 0.12 * (1 - up),
+		0.03 + 0.08 * (1 - up) + 0.2 * up + 0.1 * lean / 40)
+	# squashed down into the box when hidden, a little stretched popping up past sitting: the whole cat, in the
+	# world's up, so the hidden cat keeps to the box's footprint
+	squash = 0.47 + 0.53 * up + 0.5 * max(0.0, emerge - 1)
+	arm.scale = (1 - 0.2 * (1 - up), 1 - 0.2 * (1 - up), squash)
+	_set(arm, "neck", -0.55 * (sitting - lean) + nod * 0.5)
+	_set(arm, "head", -0.35 * (sitting - lean) + nod, 0, look)
+	arm.pose.bones["head"].rotation_euler.y = math.radians(tilt)
+	for side, sign in (("L", 1), ("R", -1)):
+		_set(arm, f"front_upper.{side}", 70 - 0.5 * (sitting - lean), 0, 4 * sign)
+		_set(arm, f"front_lower.{side}", -35)
+		_set(arm, f"front_paw.{side}", -40)
+		_set(arm, f"thigh.{side}", 60)
+		_set(arm, f"shin.{side}", 40)
+		_set(arm, f"hock.{side}", -70)
+	_aim_tail(arm, [0] * TAIL_BONES, [0] * TAIL_BONES, [(78, 0), (84, 0), (80, 4), (64, 8), (40, 12)], 1.0)
+
+
+def box_folded(arm, phase, cat=None, direction=0):
+	"""Hidden in the closed box, only the ear tips poking up between the long flaps, which stir now and then; played
+	forwards then backwards."""
+	rest(arm)
+	_sit(arm, emerge=0.0, look=8 * math.sin(TAU * phase))
+	cat.box.open(0.0, wiggle=0.5 * _bump(phase, 0.3, 0.9))
+
+
+def box_preparing(arm, phase, cat=None, direction=0):
+	"""The flaps burst open and the cat pops up out of the box with a little overshoot, landing its paws on the rim.
+	Folding plays it backwards."""
+	rest(arm)
+	flaps = _ease(phase, 0.05, 0.35)
+	rise = _ease(phase, 0.2, 0.7)
+	overshoot = 0.12 * _bump(phase, 0.55, 0.9)
+	_sit(arm, emerge=rise + overshoot, look=0, tilt=10 * _bump(phase, 0.7, 1.0))
+	cat.box.open(flaps, wiggle=0.6 * _bump(phase, 0.0, 0.12))
+
+
+def box_prepared(arm, phase, cat=None, direction=0):
+	"""Sat up in the box breathing and glancing about; played forwards then backwards."""
+	rest(arm)
+	_sit(arm, emerge=1.0 + 0.04 * math.sin(math.pi * phase), look=10 * math.sin(math.pi * phase), tilt=6 * phase,
+		nod=-3 * math.sin(math.pi * phase))
+	cat.box.open(1.0)
+
+
+def box_alternative(arm, phase, cat=None, direction=0):
+	"""Looks left, then right, with a curious head tilt each way, and back."""
+	rest(arm)
+	look = 38 * math.sin(TAU * phase)
+	_sit(arm, look=look, tilt=14 * math.sin(TAU * phase), nod=-6 * _bump(phase, 0.4, 0.6))
+	cat.box.open(1.0)
+
+
+def box_attack(arm, phase, cat=None, direction=0):
+	"""Turned towards its target (the box stays put), it rears back, then lunges over the rim and hacks up a hairball
+	at the last frame. Ending the attack plays it backwards."""
+	rest(arm)
+	rear = _bump(phase, 0.0, 0.5)
+	lunge = _ease(phase, 0.35, 1.0)
+	_sit(arm, lean=-10 * rear + 38 * lunge, nod=-8 * rear + 14 * lunge)
+	_set(arm, "chest", -10 * lunge)
+	cat.box.open(1.0)
+
+
+def box_die(arm, phase, cat=None, direction=0):
+	"""Pops up in surprise, then flops forward over the front of the box, knocked out with X eyes, paws dangling, as
+	the flaps sag; the corpse keeps the last frame."""
+	rest(arm)
+	pop = _bump(phase, 0.0, 0.3)
+	flop = _ease(phase, 0.25, 0.65)
+	settle = _bump(phase, 0.65, 0.85)
+	_sit(arm, emerge=1.0 + 0.15 * pop, lean=95 * flop - 6 * settle, nod=25 * flop)
+	for side in ("L", "R"):
+		_set(arm, f"front_upper.{side}", (70 - 0.5 * SIT_PITCH) * (1 - flop) - 20 * flop)
+		_set(arm, f"front_lower.{side}", -35 * (1 - flop) + 10 * flop)
+		_set(arm, f"front_paw.{side}", -40 * (1 - flop) + 20 * flop)
+	# the tail goes limp, flopping back over the box's back rim
+	limp = _ease(phase, 0.45, 0.8)
+	upright = [(78, 0), (84, 0), (80, 4), (64, 8), (40, 12)]
+	draped = [(55, 0), (25, 6), (-25, 10), (-60, 12), (-75, 12)]
+	_aim_tail(arm, [0] * TAIL_BONES, [0] * TAIL_BONES, [(a[0] + (b[0] - a[0]) * limp, a[1] + (b[1] - a[1]) * limp)
+		for a, b in zip(upright, draped)], 1.0)
+	cat.box.open(1.0 - 0.35 * flop)
+	cat.knock_out(phase >= 0.45)
+
+
 ANIMATIONS = {
 	"stand": {"frames": 1, "pose": lambda arm, phase, cat=None, direction=0: rest(arm)},
 	"run": {"frames": 16, "pose": run},
 	"attack": {"frames": 11, "pose": attack},
-	"die": {"frames": 17, "pose": die},
+	"die": {"frames": 17, "pose": die, "once": True},
+	"trot": {"frames": 16, "pose": trot},
+	"spit": {"frames": 14, "pose": spit, "once": True},
+	"box_folded": {"frames": 9, "pose": box_folded, "directions": 1},
+	"box_preparing": {"frames": 18, "pose": box_preparing, "directions": 1, "once": True},
+	"box_prepared": {"frames": 9, "pose": box_prepared, "directions": 1},
+	"box_alternative": {"frames": 17, "pose": box_alternative, "directions": 1},
+	"box_attack": {"frames": 10, "pose": box_attack, "once": True},
+	"box_die": {"frames": 24, "pose": box_die, "directions": 1, "once": True},
+}
+
+
+def phase(spec, frame):
+	"""A cycle's frames divide it evenly; an animation played once ends on its last pose."""
+	return frame / (spec["frames"] - 1) if spec.get("once") else frame / spec["frames"]
+
+# what each family renders for its run, attack and death
+FAMILIES = {
+	"biter": {"style": "shorthair", "run": "run", "attack": "attack", "die": "die"},
+	"spitter": {"style": "longhair", "run": "trot", "attack": "spit", "die": "die"},
+	"worm": {"style": "shorthair", "box": True, "folded": "box_folded", "preparing": "box_preparing",
+		"prepared": "box_prepared", "prepared-alternative": "box_alternative", "attack": "box_attack", "die": "box_die"},
 }

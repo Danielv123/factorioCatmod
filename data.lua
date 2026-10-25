@@ -1,14 +1,17 @@
--- Cats are the base game biters with a cat's animations, icon and sounds. With catmod_replace_bitter the biters
--- themselves turn into cats, otherwise the cats are new units next to them. Each tier comes in a few coat variants
--- (variants.lua), each its own unit; the first keeps the biter's name.
+-- Cats are the base game biters and spitters with a cat's animations, icon and sounds: short-haired cats for biters,
+-- fluffy long-haired ones for spitters, which cough up hairballs. With catmod_replace_bitter the enemies themselves
+-- turn into cats, otherwise the cats are new units next to them. Each tier comes in a few coat variants
+-- (variants.lua), each its own unit; the first keeps the enemy's name.
 
 local util = require("util")
 local tiers = require("variants")
 
-local GRAPHICS = "__catmod__/graphics/cat/biter/"
+local function graphics(family)
+	return "__catmod__/graphics/cat/" .. family .. "/"
+end
 
 -- the white cat, the coat and markings masks multiplying it by their colours, and the shadow
-local function cat_animation(name, scale, variant, options)
+local function cat_animation(family, name, scale, variant, options)
 	local function layer(file, extra)
 		local parameters = {scale = scale * 0.5, multiply_shift = scale, usage = "enemy"}
 		for key, value in pairs(options) do
@@ -17,7 +20,7 @@ local function cat_animation(name, scale, variant, options)
 		for key, value in pairs(extra or {}) do
 			parameters[key] = value
 		end
-		return util.sprite_load(GRAPHICS .. file, parameters)
+		return util.sprite_load(graphics(family) .. file, parameters)
 	end
 	return {
 		layers = {
@@ -41,13 +44,25 @@ local function cat_sound(volume, files)
 	}
 end
 
+-- where the hairball leaves a spitter cat's mouth in each direction, a little ahead of it
+local mouths = require("graphics.cat.spitter.mouth")
+local function spit_from(scale)
+	local parameters = {}
+	for i, mouth in pairs(mouths) do
+		local angle = (i - 1) / 16 * 2 * math.pi
+		parameters[i] = {(i - 1) / 16, {mouth[1] * scale + math.sin(angle) * 0.1 * scale,
+			mouth[2] * scale - math.cos(angle) * 0.1 * scale}}
+	end
+	return parameters
+end
+
 local replace = settings.startup["catmod_replace_bitter"].value
 
 -- a corpse that plays the cat flopping over and stays on its last frame: no blood puddle, no decay
-local function cat_corpse(name, from, scale, variant)
+local function cat_corpse(name, from, family, scale, variant)
 	local corpse = table.deepcopy(data.raw["corpse"][from])
 	corpse.name = name
-	corpse.animation = cat_animation("die", scale, variant, {frame_count = 17, direction_count = 16})
+	corpse.animation = cat_animation(family, "die", scale, variant, {frame_count = 17, direction_count = 16})
 	corpse.decay_animation = nil
 	corpse.use_decay_layer = false
 	corpse.ground_patch = nil
@@ -55,16 +70,16 @@ local function cat_corpse(name, from, scale, variant)
 end
 
 for _, tier in pairs(tiers) do
-	local biter = data.raw["unit"][tier.biter]
-	local base = table.deepcopy(biter)
+	local enemy = data.raw["unit"][tier.unit]
+	local base = table.deepcopy(enemy)
 	for i, variant in pairs(tier.variants) do
 		local cat
 		if i == 1 and replace then
-			cat = biter
+			cat = enemy
 		else
 			cat = table.deepcopy(base)
 			if replace then
-				cat.name = "catmod-" .. tier.biter .. "-" .. i
+				cat.name = "catmod-" .. tier.unit .. "-" .. i
 			else
 				cat.name = i == 1 and tier.cat or tier.cat .. "-" .. i
 			end
@@ -73,18 +88,28 @@ for _, tier in pairs(tiers) do
 			data:extend({cat})
 		end
 		local scale = tier.scale * variant.size
+		local family = tier.family
 		cat.localised_name = {"entity-name." .. tier.cat}
 		cat.icon = "__catmod__/graphics/cat_icon.png"
 		cat.icon_size = 128
 		cat.icons = nil
-		cat.run_animation = cat_animation("run", scale, variant, {frame_count = 16, direction_count = 16})
-		cat.distance_per_frame = 0.2 * scale
-		cat.attack_parameters.animation = cat_animation("attack", scale, variant,
-			{frame_count = 11, direction_count = 16, animation_speed = 0.4})
+		cat.run_animation = cat_animation(family, "run", scale, variant, {frame_count = 16, direction_count = 16})
+		if family == "biter" then
+			-- the gallop covers more ground a cycle than the spitters' trot
+			cat.distance_per_frame = 0.2 * scale
+			cat.attack_parameters.animation = cat_animation(family, "attack", scale, variant,
+				{frame_count = 11, direction_count = 16, animation_speed = 0.4})
+		else
+			cat.distance_per_frame = 0.07 * scale
+			-- the hairball hack keeps vanilla's spitter frame order (alternative_attacking_frame_sequence)
+			cat.attack_parameters.animation = cat_animation(family, "attack", scale, variant,
+				{frame_count = 14, direction_count = 16, animation_speed = 0.4})
+			cat.attack_parameters.projectile_creation_parameters = spit_from(scale)
+		end
 		cat.water_reflection = nil
 		cat.walking_sound = nil
 		cat.running_sound_animation_positions = nil
-		local corpse = cat_corpse(cat.name .. "-corpse", tier.biter .. "-corpse", scale, variant)
+		local corpse = cat_corpse(cat.name .. "-corpse", tier.unit .. "-corpse", family, scale, variant)
 		corpse.localised_name = {"entity-name." .. tier.cat}
 		data:extend({corpse})
 		cat.corpse = corpse.name
@@ -98,5 +123,104 @@ for _, tier in pairs(tiers) do
 			probability = 1 / (12 * 60),
 			max_sounds_per_prototype = 2,
 		}
+	end
+end
+
+-- The worms become cats in cardboard boxes: hidden in the closed box with the ears poking out, popping up when
+-- something comes near, sat looking about, and leaning out over the rim to hack up hairballs. The box doesn't turn;
+-- the cat turns inside it.
+if replace then
+	local function box(name, scale, variant, options)
+		return cat_animation("worm", name, scale, variant, options)
+	end
+	local box_mouths = require("graphics.cat.worm.mouth")
+	for _, worm in pairs(require("worms")) do
+		local turret = data.raw["turret"][worm.turret]
+		local scale, variant = worm.scale, worm.variant
+		turret.folded_animation = box("folded", scale, variant,
+			{frame_count = 9, direction_count = 1, run_mode = "forward-then-backward"})
+		turret.preparing_animation = box("preparing", scale, variant, {frame_count = 18, direction_count = 1})
+		turret.folding_animation = box("preparing", scale, variant,
+			{frame_count = 18, direction_count = 1, run_mode = "backward"})
+		turret.prepared_animation = box("prepared", scale, variant,
+			{frame_count = 9, direction_count = 1, run_mode = "forward-then-backward"})
+		turret.prepared_alternative_animation = box("prepared-alternative", scale, variant,
+			{frame_count = 17, direction_count = 1})
+		turret.starting_attack_animation = box("attack", scale, variant, {frame_count = 10, direction_count = 16})
+		turret.ending_attack_animation = box("attack", scale, variant,
+			{frame_count = 10, direction_count = 16, run_mode = "backward"})
+		turret.integration = nil
+		turret.dying_explosion = nil
+		turret.damaged_trigger_effect = nil
+		local parameters = {}
+		for i, mouth in pairs(box_mouths) do
+			local angle = (i - 1) / 16 * 2 * math.pi
+			parameters[i] = {(i - 1) / 16, {mouth[1] * scale + math.sin(angle) * 0.1 * scale,
+				mouth[2] * scale - math.cos(angle) * 0.1 * scale}}
+		end
+		turret.attack_parameters.projectile_creation_parameters = parameters
+		-- knocked out over the box's rim, whether it was killed up or hidden
+		for _, name in pairs({worm.corpse .. "-worm-corpse", worm.corpse .. "-worm-corpse-burrowed"}) do
+			local corpse = data.raw["corpse"][name]
+			if corpse then
+				corpse.animation = box("die", scale, variant, {frame_count = 24, direction_count = 1})
+				corpse.decay_animation = nil
+				corpse.ground_patch = nil
+				corpse.ground_patch_decay = nil
+			end
+		end
+	end
+end
+
+-- The nests are cat beds (biters) and blanket-lined baskets (spitters) of sleeping kittens, in four variations; the
+-- kittens' coats are rendered in, so the sheets need no tint. Destroyed, the kittens wake with a start and flop over.
+if replace then
+	local function nest(family, name, variation, frames, extra)
+		local folder = "__catmod__/graphics/cat/" .. family .. "-nest/" .. name .. "-v" .. variation
+		local options = {frame_count = frames, direction_count = 1, scale = 0.5, usage = "enemy"}
+		for key, value in pairs(extra or {}) do
+			options[key] = value
+		end
+		local shadow = table.deepcopy(options)
+		shadow.draw_as_shadow = true
+		return {layers = {util.sprite_load(folder, options), util.sprite_load(folder .. "-shadow", shadow)}}
+	end
+	for family, spawner_name in pairs({biter = "biter-spawner", spitter = "spitter-spawner"}) do
+		local spawner = data.raw["unit-spawner"][spawner_name]
+		local idle, dead = {}, {}
+		for variation = 1, 4 do
+			idle[variation] = nest(family, "idle", variation, 7,
+				{run_mode = "forward-then-backward", animation_speed = 0.18})
+			dead[variation] = nest(family, "die", variation, 18)
+		end
+		spawner.graphics_set.animations = idle
+		spawner.dying_explosion = nil
+		spawner.damaged_trigger_effect = nil
+		local corpse = data.raw["corpse"][spawner_name .. "-corpse"]
+		corpse.animation = dead
+		corpse.decay_animation = nil
+		corpse.ground_patch = nil
+		corpse.ground_patch_decay = nil
+	end
+end
+
+-- Spitters and worms spit hairballs instead of acid: a stream's particle becomes a tumbling hairball and only the
+-- first particle of each stream shows, so it flies as one hairball; where and how hard it hits stays the same.
+if replace then
+	local hairball = "__catmod__/graphics/cat/hairball/"
+	for name, stream in pairs(data.raw["stream"]) do
+		if name:find("^acid%-stream%-spitter%-") or name:find("^acid%-stream%-worm%-") then
+			local scale = stream.particle and stream.particle.scale or 0.5
+			stream.particle = util.sprite_load(hairball .. "hairball", {frame_count = 15, scale = scale,
+				priority = "high", animation_speed = 1})
+			stream.shadow = util.sprite_load(hairball .. "hairball-shadow", {frame_count = 15, scale = scale,
+				priority = "high", animation_speed = 1, draw_as_shadow = true})
+			stream.spine_animation = nil
+			stream.oriented_particle = false
+			stream.particle_alpha_per_part = 0
+			stream.particle_scale_per_part = 1
+			stream.particle_start_alpha = 1
+			stream.particle_end_alpha = 1
+		end
 	end
 end

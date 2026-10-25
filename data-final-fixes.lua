@@ -1,5 +1,5 @@
--- When the biters are cats, every spawner (other mods' too) spawns each tier's coat variants in equal shares of the
--- tier's weight.
+-- When the biters and spitters are cats, every spawner (other mods' too) spawns each tier's coat variants in equal
+-- shares of the tier's weight.
 
 if not settings.startup["catmod_replace_bitter"].value then
 	return
@@ -7,11 +7,11 @@ end
 
 local variants = {}
 for _, tier in pairs(require("variants")) do
-	local names = {tier.biter}
+	local names = {tier.unit}
 	for i = 2, #tier.variants do
-		names[#names + 1] = "catmod-" .. tier.biter .. "-" .. i
+		names[#names + 1] = "catmod-" .. tier.unit .. "-" .. i
 	end
-	variants[tier.biter] = names
+	variants[tier.unit] = names
 end
 
 for _, spawner in pairs(data.raw["unit-spawner"]) do
