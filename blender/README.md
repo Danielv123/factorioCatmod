@@ -12,9 +12,9 @@ sheets with `util.sprite_load` descriptors. The animations are the family's keys
 and `die` for biters and spitters; `folded`, `preparing`, `prepared`, `prepared-alternative`, `attack` and `die` for
 worms. The renders stay out of git until a release.
 
-`./render_all.sh [parallel jobs]` renders everything, five Blender processes at once by default: one process can't
+`./render_all.sh [parallel jobs]` renders everything, seven Blender processes at once by default: one process can't
 keep the GPU busy, as much of each frame is single-threaded posing, fur deforming and image saving. Each job needs
-about 5 GB of memory. Pass jobs to render only some, e.g. `./render_all.sh 3 "render.py -- attack worm"`.
+up to 6 GB of memory and 3 GB of video memory. Pass jobs to render only some, e.g. `./render_all.sh 3 "render.py -- attack worm"`.
 
 Each animation has these layers:
 

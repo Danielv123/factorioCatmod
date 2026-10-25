@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Renders everything, several Blender processes at once: one process can't keep the GPU busy, as much of a frame is
-# single-threaded posing, fur deforming and image saving. Each job needs about 5 GB of memory and 2 GB of video memory.
-#   ./render_all.sh [parallel jobs, default 5] [job ...]
+# single-threaded posing, fur deforming and image saving. Each job needs up to 6 GB of memory and 3 GB of video memory.
+#   ./render_all.sh [parallel jobs, default 7] [job ...]
 # A job is a line from the list below, e.g. "render.py -- attack worm"; with none given it renders all of them.
 set -euo pipefail
 cd "$(dirname "$0")"
 BLENDER=${BLENDER:-"/c/Program Files/Blender Foundation/Blender 5.2/blender.exe"}
-PARALLEL=${1:-5}
+PARALLEL=${1:-7}
 shift || true
 
 # longest first, so the short ones fill in at the end
