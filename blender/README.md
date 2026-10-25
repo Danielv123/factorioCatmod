@@ -12,15 +12,9 @@ sheets with `util.sprite_load` descriptors. The animations are the family's keys
 and `die` for biters and spitters; `folded`, `preparing`, `prepared`, `prepared-alternative`, `attack` and `die` for
 worms. The renders stay out of git until a release.
 
-Everything, on an RTX 5090, takes about three hours:
-
-    for f in biter spitter; do for a in run attack die; do blender -b --factory-startup -P render.py -- $a $f; done; done
-    for a in folded preparing prepared prepared-alternative attack die; do
-        blender -b --factory-startup -P render.py -- $a worm; done
-    for f in biter spitter; do blender -b --factory-startup -P nest.py -- $f; done
-    blender -b --factory-startup -P hairball.py
-    blender -b --factory-startup -P extras.py -- tufts
-    blender -b --factory-startup -P extras.py -- icons
+`./render_all.sh [parallel jobs]` renders everything, five Blender processes at once by default: one process can't
+keep the GPU busy, as much of each frame is single-threaded posing, fur deforming and image saving. Each job needs
+about 5 GB of memory. Pass jobs to render only some, e.g. `./render_all.sh 3 "render.py -- attack worm"`.
 
 Each animation has these layers:
 
