@@ -1,8 +1,14 @@
-# Poses for the cat's animations, as functions of the phase (0 to 1) through the cycle. Angles are degrees; bones pitch
-# about their local X axis (positive swings a leg's paw forward) and swing sideways about Z.
+# Poses for the cat's animations, as functions of the phase (0 to 1) through the cycle. Angles are degrees; leg and
+# spine bones pitch about their local X axis (positive swings a leg's paw forward). The tail is aimed instead: each bone
+# points in a direction given relative to the body as a whole (the root bone), as an elevation above straight back and
+# a sideways swing, so the spine's flexing doesn't swing it about.
 import math
 
+import bpy
+from mathutils import Vector
+
 TAU = 2 * math.pi
+TAIL_BONES = 5
 
 
 def _set(arm, bone, x=0.0, y=0.0, z=0.0):
@@ -11,29 +17,10 @@ def _set(arm, bone, x=0.0, y=0.0, z=0.0):
 
 def rest(arm):
 	for bone in arm.pose.bones:
+		bone.rotation_mode = "XYZ"
 		bone.rotation_euler = (0, 0, 0)
 		bone.location = (0, 0, 0)
-
-
-def _swing(p):
-	"""0 on the ground, rising to 1 mid-swing, for a leg at phase p (stance 0-0.5, swing 0.5-1)."""
-	p %= 1
-	return math.sin(math.pi * (p - 0.5) / 0.5) if p > 0.5 else 0.0
-
-
-def _front_leg(arm, side, p, reach=46):
-	lift = _swing(p)
-	_set(arm, f"front_upper.{side}", reach * math.cos(TAU * p) + 8 * lift)
-	_set(arm, f"front_lower.{side}", -75 * lift)
-	_set(arm, f"front_paw.{side}", -50 * lift + 15 * max(0, math.sin(TAU * p)))
-
-
-def _hind_leg(arm, side, p, reach=36):
-	lift = _swing(p)
-	_set(arm, f"thigh.{side}", reach * math.cos(TAU * p) + 10 * lift)
-	_set(arm, f"shin.{side}", 30 * lift - 10 * max(0, -math.cos(TAU * p)))
-	_set(arm, f"hock.{side}", -55 * lift + 15 * max(0, -math.cos(TAU * p)))
-	_set(arm, f"hind_paw.{side}", 30 * lift)
+		bone.scale = (1, 1, 1)
 
 
 def _bump(phase, start, end):
@@ -49,28 +36,103 @@ def _ease(phase, start, end):
 	return t * t * (3 - 2 * t)
 
 
+def _aim_tail(arm, elevations, swings):
+	"""Points tail bone i at elevations[i] degrees above straight back and swings[i] degrees to the side, in the
+	frame of the posed root bone. Call after the rest of the pose is set."""
+	bpy.context.view_layer.update()
+	root = arm.pose.bones["root"]
+	body_turn = root.matrix.to_3x3() @ root.bone.matrix_local.to_3x3().inverted()
+	parent = arm.pose.bones["hips"].matrix.copy()
+	for i in range(TAIL_BONES):
+		pose_bone = arm.pose.bones[f"tail{i}"]
+		bone = pose_bone.bone
+		unposed = parent @ (bone.parent.matrix_local.inverted() @ bone.matrix_local)
+		turn = unposed.to_3x3().normalized()
+		e, s = math.radians(elevations[i]), math.radians(swings[i])
+		target = body_turn @ Vector((math.sin(s) * math.cos(e), -math.cos(s) * math.cos(e), math.sin(e)))
+		world = turn.col[1].rotation_difference(target.normalized())
+		local = (turn.inverted() @ world.to_matrix() @ turn).to_quaternion()
+		pose_bone.rotation_mode = "QUATERNION"
+		pose_bone.rotation_quaternion = local
+		parent = unposed @ local.to_matrix().to_4x4()
+
+
+def _front_leg(arm, side, p):
+	"""On the ground from 0.55 to 0.85, sweeping back with the paw flat; then folded up under the chest through the
+	gathered flight, and reaching far forward through the stretched one."""
+	p %= 1
+	if 0.55 <= p < 0.85:
+		t = (p - 0.55) / 0.3
+		upper = 40 - 85 * t
+		lower = -12 * math.sin(math.pi * t)
+		paw = -(upper + lower)
+	else:
+		t = ((p - 0.85) % 1) / 0.7
+		upper = -45 + 85 * _ease(t, 0.1, 0.85)
+		lower = -115 * _bump(t, 0.0, 0.8)
+		paw = -65 * _bump(t, 0.0, 0.75) + 15 * _bump(t, 0.7, 1.0)
+	_set(arm, f"front_upper.{side}", upper)
+	_set(arm, f"front_lower.{side}", lower)
+	_set(arm, f"front_paw.{side}", paw)
+
+
+def _hind_leg(arm, side, p):
+	"""On the ground from 0 to 0.35, landing under the belly and pushing back to a straight leg; then trailing straight
+	back through the stretched flight, and folding forward to land under the belly again."""
+	p %= 1
+	if p < 0.35:
+		t = p / 0.35
+		thigh = 32 - 72 * t
+		shin = 18 * (1 - t)
+		hock = -20 * (1 - t) + 30 * t
+		paw = -(thigh + shin + hock) * (1 - _ease(t, 0.7, 1.0)) + 20 * _ease(t, 0.7, 1.0)
+	else:
+		t = (p - 0.35) / 0.65
+		thigh = -40 + 72 * _ease(t, 0.15, 0.95)
+		fold = _bump(t, 0.12, 0.92)
+		shin = 45 * fold
+		hock = 30 * (1 - _ease(t, 0.0, 0.2)) - 75 * fold
+		paw = 20 * (1 - _ease(t, 0.0, 0.2)) + 40 * fold
+	_set(arm, f"thigh.{side}", thigh)
+	_set(arm, f"shin.{side}", shin)
+	_set(arm, f"hock.{side}", hock)
+	_set(arm, f"hind_paw.{side}", paw)
+
+
 def run(arm, phase, cat=None, direction=0):
-	"""A bouncy bound: the front paws reach out together, then the hind legs push off together."""
+	"""A rotary gallop after Muybridge's galloping cat (Animal Locomotion, plate 720). At 0 the cat is gathered: the
+	spine arched, hind paws landing under the belly, front paws tucked. The hind legs push it into a stretched flight
+	(about 0.47), the front paws land and push it into a short gathered flight while the hind legs swing forward. The
+	head stays level, and the tail trails behind, rising as the body stretches and dropping as it gathers, the tip
+	lagging the base."""
 	rest(arm)
-	_front_leg(arm, "L", phase)
-	_front_leg(arm, "R", phase + 0.07)
-	_hind_leg(arm, "L", phase + 0.5)
-	_hind_leg(arm, "R", phase + 0.57)
-	# the spine gathers when the hind paws come forward and stretches out when the front paws reach
+	_hind_leg(arm, "L", phase)
+	_hind_leg(arm, "R", phase - 0.05)
+	_front_leg(arm, "R", phase)
+	_front_leg(arm, "L", phase - 0.05)
 	flex = math.cos(TAU * phase)
-	_set(arm, "hips", 10 * flex)
-	_set(arm, "chest", -8 * flex)
-	# up in the air after the hind legs push, with the head kept steady
-	arm.pose.bones["root"].location = (0, 0, 0.1 * max(0.0, math.sin(TAU * (phase - 0.15))))
-	_set(arm, "neck", 6 * flex - 4 * math.sin(TAU * phase))
-	_set(arm, "head", -2 * flex + 3 * math.sin(TAU * phase))
-	# the tail trails in a wave down its length
-	for i in range(5):
-		_set(arm, f"tail{i}", 9 * math.sin(TAU * (phase - 0.12 * i)) - 4, 0, 7 * math.sin(TAU * (phase - 0.1 * i)))
+	pitch = 4 * math.sin(TAU * (phase - 0.05))
+	root = arm.pose.bones["root"]
+	root.location = (0, 0, 0.14 * _bump(phase, 0.3, 0.66) + 0.05 * _bump((phase + 0.15) % 1, 0.0, 0.2))
+	# squashed when gathered, stretched long in the air (the head keeps its shape, see rig.py)
+	root.scale = (1 + 0.02 * flex, 1 - 0.08 * flex, 1 + 0.06 * flex)
+	_set(arm, "root", pitch)
+	# arched hard when gathered, only a little hollow when stretched
+	hips = 20 * flex if flex > 0 else 7 * flex
+	chest = -18 * flex if flex > 0 else -6 * flex
+	_set(arm, "hips", hips)
+	_set(arm, "chest", chest)
+	# the neck takes up most of the pitch the chest ends at (root, hips and chest), keeping the head level
+	_set(arm, "neck", -0.8 * (pitch + hips + chest))
+	_set(arm, "head", -0.3 * pitch + 2 * math.sin(TAU * phase))
+	curl = (0, 2, 6, 12, 20)
+	_aim_tail(arm, [22 + 18 * math.cos(TAU * (phase - 0.47 - 0.07 * i)) + curl[i] for i in range(TAIL_BONES)],
+		[4 * math.sin(TAU * (phase - 0.1 * i)) for i in range(TAIL_BONES)])
 
 
 def attack(arm, phase, cat=None, direction=0):
-	"""A playful pounce: a crouch with a wiggle of the bottom, a hop forward with both paws up, and a swipe."""
+	"""A playful pounce: a crouch with a wiggle of the bottom and a flicking tail tip, a hop forward with both paws
+	up and the tail out straight for balance, and a swipe."""
 	rest(arm)
 	crouch = _bump(phase, 0.0, 0.35)
 	pounce = _bump(phase, 0.25, 0.8)
@@ -87,9 +149,9 @@ def attack(arm, phase, cat=None, direction=0):
 		_set(arm, f"thigh.{side}", -12 * crouch - 28 * pounce)
 		_set(arm, f"shin.{side}", 20 * crouch - 10 * pounce)
 		_set(arm, f"hock.{side}", -25 * crouch + 25 * pounce)
-	for i in range(5):
-		_set(arm, f"tail{i}", -6 * crouch + 5 * math.sin(TAU * (phase - 0.1 * i)) * (1 - crouch), 0,
-			10 * math.sin(2 * TAU * (phase - 0.1 * i)) * crouch)
+	curl = (0, 3, 8, 14, 22)
+	_aim_tail(arm, [12 - 8 * crouch + 8 * pounce + curl[i] * (1 - 0.5 * pounce) for i in range(TAIL_BONES)],
+		[18 * math.sin(4 * TAU * phase) * crouch * i / (TAIL_BONES - 1) for i in range(TAIL_BONES)])
 
 
 def die(arm, phase, cat=None, direction=0):
@@ -100,12 +162,12 @@ def die(arm, phase, cat=None, direction=0):
 	roll = _ease(phase, 0.2, 0.6)
 	settle = _bump(phase, 0.6, 0.8)
 	# facing east-ish its right side faces the camera: it lies down on its left, and the other way round
-	side = -1 if math.sin(TAU * direction / 16) >= 0 else 1
-	angle = math.radians(90 * roll) * side
+	lie = -1 if math.sin(TAU * direction / 16) >= 0 else 1
+	angle = math.radians(90 * roll) * lie
 	# rolled about the body's length, the middle of the body comes to rest on its side above the ground
 	centre = 0.55
 	height = centre - 0.24 * roll + 0.12 * hop + 0.03 * settle
-	arm.pose.bones["root"].location = (-centre * math.sin(angle) - 0.1 * roll * side, 0, height - centre * math.cos(angle))
+	arm.pose.bones["root"].location = (-centre * math.sin(angle) - 0.1 * roll * lie, 0, height - centre * math.cos(angle))
 	arm.pose.bones["root"].rotation_euler = (0, angle, 0)
 	stiff = _ease(phase, 0.15, 0.4)
 	for side in ("L", "R"):
@@ -117,8 +179,10 @@ def die(arm, phase, cat=None, direction=0):
 		_set(arm, f"hock.{side}", 20 * stiff)
 	_set(arm, "neck", -10 * roll)
 	_set(arm, "head", 8 * hop - 10 * roll)
-	for i in range(5):
-		_set(arm, f"tail{i}", 20 * hop * (1 if i == 0 else 0) - 18 * roll)
+	# the tail shoots up in surprise, then lies out behind with a little curl at the tip
+	curl = (0, 2, 5, 10, 16)
+	_aim_tail(arm, [25 * (1 - roll) + 40 * hop + curl[i] * (1 - 0.4 * roll) for i in range(TAIL_BONES)],
+		[0] * TAIL_BONES)
 	if cat is not None:
 		cat.knock_out(phase >= 0.45)
 

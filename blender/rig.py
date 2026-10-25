@@ -51,6 +51,8 @@ def build(body, rigid_parts):
 			bone.use_connect = False
 	bpy.ops.object.mode_set(mode="OBJECT")
 	armature.data.bones["root"].use_deform = False
+	# squash and stretch scales the body; the head, and the eyes and nose on it, keep their shape
+	armature.data.bones["head"].inherit_scale = "NONE"
 
 	# automatic (heat) weights
 	for obj in bpy.context.view_layer.objects:
