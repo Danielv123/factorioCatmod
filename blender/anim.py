@@ -326,13 +326,14 @@ def _sit(arm, emerge=1.0, pitch=SIT_PITCH, lean=0.0, look=0.0, tilt=0.0, nod=0.0
 	root = arm.pose.bones["root"]
 	root.rotation_euler = (p, 0, 0)
 	# pitching about the feet swings the head back; this keeps the chest over the box's middle
-	# hidden, it's centred in the box, head to rump, so neither pokes through a wall
-	root.location = (0, 0.62 * math.sin(p) - 0.15 + 0.35 * lean / 40 + 0.12 * (1 - up),
+	# hidden, it sits well back, so the head and eyes stay behind the front wall the camera sees (the rump, past the
+	# back wall, is hidden behind the box)
+	root.location = (0, 0.62 * math.sin(p) - 0.15 + 0.35 * lean / 40 - 0.02 * (1 - up),
 		0.03 + 0.08 * (1 - up) + 0.2 * up + 0.1 * lean / 40)
 	# squashed down into the box when hidden, a little stretched popping up past sitting: the whole cat, in the
 	# world's up, so the hidden cat keeps to the box's footprint
 	squash = 0.47 + 0.53 * up + 0.5 * max(0.0, emerge - 1)
-	arm.scale = (1 - 0.2 * (1 - up), 1 - 0.2 * (1 - up), squash)
+	arm.scale = (1 - 0.25 * (1 - up), 1 - 0.25 * (1 - up), squash)
 	_set(arm, "neck", -0.55 * (sitting - lean) + nod * 0.5)
 	_set(arm, "head", -0.35 * (sitting - lean) + nod, 0, look)
 	arm.pose.bones["head"].rotation_euler.y = math.radians(tilt)

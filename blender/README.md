@@ -2,10 +2,25 @@
 
 The cats are built, rigged, animated and rendered in code with Blender 5.2 and Cycles. Run from this directory:
 
-    blender -b --factory-startup -P render.py -- <animation> [family]
+    blender -b --factory-startup -P render.py -- <animation> <biter|spitter|worm>
+    blender -b --factory-startup -P nest.py -- <biter|spitter>
+    blender -b --factory-startup -P hairball.py
+    blender -b --factory-startup -P extras.py -- <tufts|icons>
 
-This renders the animation in Factorio's 16 directions and packs it into `graphics/cat/<family>/` as sprite sheets
-with `util.sprite_load` descriptors. The renders stay out of git until a release.
+`render.py` renders an animation in Factorio's 16 directions and packs it into `graphics/cat/<family>/` as sprite
+sheets with `util.sprite_load` descriptors. The animations are the family's keys in `anim.FAMILIES`: `run`, `attack`
+and `die` for biters and spitters; `folded`, `preparing`, `prepared`, `prepared-alternative`, `attack` and `die` for
+worms. The renders stay out of git until a release.
+
+Everything, on an RTX 5090, takes about three hours:
+
+    for f in biter spitter; do for a in run attack die; do blender -b --factory-startup -P render.py -- $a $f; done; done
+    for a in folded preparing prepared prepared-alternative attack die; do
+        blender -b --factory-startup -P render.py -- $a worm; done
+    for f in biter spitter; do blender -b --factory-startup -P nest.py -- $f; done
+    blender -b --factory-startup -P hairball.py
+    blender -b --factory-startup -P extras.py -- tufts
+    blender -b --factory-startup -P extras.py -- icons
 
 Each animation has these layers:
 
@@ -15,10 +30,14 @@ Each animation has these layers:
   or patches are, for each pattern set. `data.lua` draws them with `multiplicative-with-alpha` and a tint, which
   multiplies the white cat by the coat's colours, so every coat in `variants.lua` shares the same sheets.
 
-`preview.py -- <out_dir> <animation> [direction] [coat] [zoom]` renders one direction composed with a sample coat, for
-checking an animation.
+`preview.py -- <out_dir> <animation> [direction] [coat] [zoom] [style]` renders one direction composed with a sample
+coat, and `sideview.py -- <out.png> <animation> [style]` a contact sheet from straight side on, for checking an
+animation.
 
-- `cat.py` builds the cat: a metaball body with ears, eyes and nose, baked procedural fur, and the mask looks.
-- `rig.py` is its skeleton, and `anim.py` the poses of each animation.
+- `cat.py` builds the cat: a metaball body with ears, eyes and nose, baked procedural fur in short and long styles,
+  and the mask looks.
+- `rig.py` is its skeleton, and `anim.py` the poses of each animation. The gallop's tail is traced from Muybridge's
+  photographs of a galloping cat (Animal Locomotion, plate 720).
+- `box.py` is the worms' cardboard box; `nest.py` builds the beds and baskets and renders the kittens in them.
 - `scene.py` sets up the camera, light and passes to match Factorio's sprites.
 - `sheet.py` packs frames into sheets.

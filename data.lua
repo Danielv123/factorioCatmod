@@ -254,7 +254,8 @@ if replace then
 end
 
 -- Spitters and worms spit hairballs instead of acid: a stream's particle becomes a tumbling hairball and only the
--- first particle of each stream shows, so it flies as one hairball; where and how hard it hits stays the same.
+-- first particle of each stream shows, so it flies as one hairball; where and how hard it hits stays the same. Its
+-- splash turns from green acid to a soggy hairball brown.
 if replace then
 	local hairball = "__catmod__/graphics/cat/hairball/"
 	for name, stream in pairs(data.raw["stream"]) do
@@ -262,14 +263,30 @@ if replace then
 			local scale = stream.particle and stream.particle.scale or 0.5
 			stream.particle = util.sprite_load(hairball .. "hairball", {frame_count = 15, scale = scale,
 				priority = "high", animation_speed = 1})
-			stream.shadow = util.sprite_load(hairball .. "hairball-shadow", {frame_count = 15, scale = scale,
-				priority = "high", animation_speed = 1, draw_as_shadow = true})
+			-- every particle draws its shadow, hidden or not, which would trail a line of dots
+			stream.shadow = nil
 			stream.spine_animation = nil
 			stream.oriented_particle = false
 			stream.particle_alpha_per_part = 0
 			stream.particle_scale_per_part = 1
 			stream.particle_start_alpha = 1
 			stream.particle_end_alpha = 1
+		end
+	end
+	local function soggy(node)
+		for key, value in pairs(node) do
+			if key == "tint" and type(value) == "table" then
+				local alpha = value.a or value[4] or 1
+				node.tint = {0.5 * alpha, 0.38 * alpha, 0.27 * alpha, alpha}
+			elseif type(value) == "table" then
+				soggy(value)
+			end
+		end
+	end
+	for name, fire in pairs(data.raw["fire"]) do
+		if name:find("^acid%-splash%-fire%-") then
+			soggy(fire.pictures or {})
+			soggy(fire.secondary_pictures or {})
 		end
 	end
 end
