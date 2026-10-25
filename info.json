@@ -1,9 +1,9 @@
 {
 "name": "catmod",
 "title": "Cats",
-"version": "3.0.0",
+"version": "4.0.0",
 "author": "Danielv123",
 "dependencies": ["base >= 2.1"],
 "factorio_version": "2.1",
-"description": "Replaces biters with cute cats, because it had to happen."
+"description": "Replaces the biters with cute, slightly grubby cats, because it had to happen. Biters are short-haired cats, spitters fluffy long-haired ones coughing up hairballs, worms are cats hiding in cardboard boxes and nests are beds of sleeping kittens. Every tier comes in several coats."
 }

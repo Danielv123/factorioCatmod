@@ -1,4 +1,2 @@
 dist/
 __pycache__/
-# renders stay out of git until a release
-graphics/cat/

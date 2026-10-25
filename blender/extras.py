@@ -1,6 +1,6 @@
 # The small things: fur tufts for the puff a cat leaves when it's hit or knocked out (white, tinted to the coat in
 # game), and the icons, portraits of each family with coat masks so a tier's icon wears its coat.
-#   blender -b --factory-startup -P extras.py -- [tufts|icons]
+#   blender -b --factory-startup -P extras.py -- [tufts|icons|thumbnail]
 import math
 import os
 import random
@@ -109,8 +109,40 @@ def icons():
 					np.dstack([colour[..., :3], colour[..., 3] * value]))
 
 
+def thumbnail():
+	"""The mod portal's 144 px thumbnail: the ginger tabby's face, its coat composited in, rendered at twice the size
+	and scaled down, written to the mod's root."""
+	size = 288
+	scene.reset()
+	sc, ground = scene.setup(size, size, samples=256)
+	ground.hide_render = True
+	cat = cat_module.build("shorthair")
+	scene.catchlight(cat.eyes)
+	armature = rig.build(cat.body, [cat.nose, *cat.eyes])
+	root = bpy.data.objects.new("Root", None)
+	sc.collection.objects.link(root)
+	armature.parent = root
+	anim.rest(armature)
+	root.rotation_euler = (0, 0, math.radians(180 + 20))
+	camera = sc.camera
+	camera.rotation_euler = (math.radians(75), 0, 0)
+	camera.location = (0, -20 * math.sin(math.radians(75)), 20 * math.cos(math.radians(75)) + 0.72)
+	camera.data.ortho_scale = 2.1
+	layers = scene.render_layers(sc, ground, cat, ["tabby"], os.path.join(bpy.app.tempdir, "thumb.png"))
+	colour, mask = layers["colour"], layers["tabby"]
+	coat_tint, marks_tint = np.array((0.86, 0.45, 0.16)), np.array((0.53, 0.21, 0.07))
+	coat, marks = mask[..., 0:1], mask[..., 1:2]
+	rgb = colour[..., :3] * (1 - coat + coat * coat_tint)
+	rgb = rgb * (1 - marks + marks * marks_tint / coat_tint)
+	image = np.dstack([rgb, colour[..., 3:4]])
+	small = image.reshape(size // 2, 2, size // 2, 2, 4).mean(axis=(1, 3))
+	sheet.save(os.path.join(HERE, "..", "thumbnail.png"), small)
+
+
 if what == "tufts":
 	tufts()
+elif what == "thumbnail":
+	thumbnail()
 else:
 	icons()
 print("made", what)

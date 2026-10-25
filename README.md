@@ -13,7 +13,9 @@ The models are built, animated and rendered in code with Blender; see [blender/R
 
 ## Releasing
 
-The rendered sprite sheets are kept out of git until a release (`graphics/cat/` is ignored). Render them first (see
-`blender/README.md`), set the version in `info.json`, commit, and push a matching tag
+The rendered sprite sheets in `graphics/cat/` are committed for releases; render them again after changing the models
+(see `blender/README.md`). Set the version in `info.json`, add a `changelog.txt` entry, commit, and push a matching tag
 (`git tag v4.0.0 && git push --tags`). CI zips the mod and uploads it to the mod portal with the `FACTORIO_MOD_TOKEN`
 secret.
+
+The cat sounds are cut from CC0 recordings; see [sound/CREDITS.md](sound/CREDITS.md).

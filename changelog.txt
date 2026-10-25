@@ -1,0 +1,21 @@
+---------------------------------------------------------------------------------------------------
+Version: 4.0.0
+Date: 2026-10-25
+  Major Features:
+    - New cats, modelled, animated and rendered from scratch: plush, furry and a bit grubby, to suit the factory.
+    - Biters are short-haired cats that gallop, pounce, and flop over knocked out with X eyes.
+    - Spitters are fluffy long-haired cats that trot and cough up hairballs instead of spitting acid.
+    - Worms are cats hiding in cardboard boxes, popping up to spit hairballs; the box bursts when they're knocked out.
+    - Nests are cat beds and wicker baskets of sleeping kittens, which break apart when destroyed.
+    - Every biter and spitter tier comes in three coats, so a pack doesn't all look the same.
+  Features:
+    - Cat sounds for every enemy: meows, kitten mews, hisses, growls, chirps, hairball hacks and purrs.
+    - Fur puffs instead of blood, and portrait icons for every cat.
+  Changes:
+    - Requires Factorio 2.1.
+    - The enemies' attacks, health and spawning are unchanged.
+---------------------------------------------------------------------------------------------------
+Version: 3.0.0
+Date: 2026-10-24
+  Changes:
+    - Updated to Factorio 2.1.
